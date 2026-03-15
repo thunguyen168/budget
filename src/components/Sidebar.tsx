@@ -1,6 +1,6 @@
-import { LayoutDashboard, Upload, List, PiggyBank } from 'lucide-react'
+import { LayoutDashboard, Upload, List, PiggyBank, Landmark } from 'lucide-react'
 
-export type Page = 'dashboard' | 'import' | 'transactions' | 'budget'
+export type Page = 'dashboard' | 'import' | 'transactions' | 'budget' | 'accounts'
 
 interface Props {
   current: Page
@@ -11,6 +11,7 @@ const nav: { id: Page; label: string; Icon: React.ElementType }[] = [
   { id: 'dashboard',    label: 'Dashboard',     Icon: LayoutDashboard },
   { id: 'transactions', label: 'Transactions',   Icon: List },
   { id: 'budget',       label: 'Budget',         Icon: PiggyBank },
+  { id: 'accounts',     label: 'Accounts',       Icon: Landmark },
   { id: 'import',       label: 'Import',         Icon: Upload },
 ]
 

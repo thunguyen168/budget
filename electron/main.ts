@@ -65,6 +65,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('db:getAccounts', () => Q.getAccounts())
 
+  ipcMain.handle('db:addAccount', (_e, data) => Q.addAccount(data))
+
+  ipcMain.handle('db:updateAccount', (_e, id: number, data) => Q.updateAccount(id, data))
+
+  ipcMain.handle('db:detectTransfers', (_e, windowDays: number) => Q.detectTransfers(windowDays))
+
+  ipcMain.handle('db:applyTransfers', (_e, txIds: number[]) => Q.applyTransfers(txIds))
+
+  ipcMain.handle('db:toggleTransfer', (_e, id: number) => Q.toggleTransfer(id))
+
   ipcMain.handle('db:importTransactions', (_e, data) => Q.importTransactions(data))
 
   ipcMain.handle('db:getImportHistory', () => Q.getImportHistory())
@@ -78,6 +88,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('db:getCategories', () => Q.getCategories())
 
   ipcMain.handle('db:addCategory', (_e, data) => Q.addCategory(data))
+
+  ipcMain.handle('db:updateCategory', (_e, id: number, data) => Q.updateCategory(id, data))
 
   ipcMain.handle('db:getBudgets', (_e, forDate?: string) => Q.getBudgets(forDate))
 

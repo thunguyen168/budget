@@ -12,6 +12,18 @@ const api = {
   // Accounts
   getAccounts: () =>
     ipcRenderer.invoke('db:getAccounts'),
+  addAccount: (data: unknown) =>
+    ipcRenderer.invoke('db:addAccount', data),
+  updateAccount: (id: number, data: unknown) =>
+    ipcRenderer.invoke('db:updateAccount', id, data),
+
+  // Transfers
+  detectTransfers: (windowDays: number) =>
+    ipcRenderer.invoke('db:detectTransfers', windowDays),
+  applyTransfers: (txIds: number[]) =>
+    ipcRenderer.invoke('db:applyTransfers', txIds),
+  toggleTransfer: (id: number) =>
+    ipcRenderer.invoke('db:toggleTransfer', id),
 
   // Import
   importTransactions: (data: unknown) =>
@@ -30,6 +42,8 @@ const api = {
     ipcRenderer.invoke('db:getCategories'),
   addCategory: (data: unknown) =>
     ipcRenderer.invoke('db:addCategory', data),
+  updateCategory: (id: number, data: unknown) =>
+    ipcRenderer.invoke('db:updateCategory', id, data),
 
   // Budgets
   getBudgets: (forDate?: string) =>

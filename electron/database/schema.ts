@@ -64,4 +64,20 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_external_id ON transactions(external_id);
   `)
+
+  // Migrations for existing databases
+  const txCols = (db.prepare(`PRAGMA table_info(transactions)`).all() as { name: string }[]).map((c) => c.name)
+  if (!txCols.includes('ownership_share')) {
+    db.exec(`ALTER TABLE transactions ADD COLUMN ownership_share REAL`)
+  }
+  if (!txCols.includes('is_transfer')) {
+    db.exec(`ALTER TABLE transactions ADD COLUMN is_transfer INTEGER NOT NULL DEFAULT 0`)
+  }
+
+  const accCols = (db.prepare(`PRAGMA table_info(accounts)`).all() as { name: string }[]).map((c) => c.name)
+  if (!accCols.includes('account_type')) {
+    db.exec(`ALTER TABLE accounts ADD COLUMN account_type TEXT NOT NULL DEFAULT 'spending'`)
+    // Set sensible defaults for seeded accounts based on bank_type
+    db.exec(`UPDATE accounts SET account_type = 'credit' WHERE bank_type = 'amex'`)
+  }
 }

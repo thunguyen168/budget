@@ -17,6 +17,12 @@ export function BudgetPage() {
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null)
   const [editAmount, setEditAmount] = useState<string>('')
 
+  // Editing category
+  const [editingCatId, setEditingCatId] = useState<number | null>(null)
+  const [editCatName, setEditCatName] = useState<string>('')
+  const [editCatColour, setEditCatColour] = useState<string>('#6366f1')
+  const [editCatFixed, setEditCatFixed] = useState<boolean>(false)
+
   // New category
   const [showAddCat, setShowAddCat] = useState(false)
   const [newCatName, setNewCatName] = useState('')
@@ -50,6 +56,30 @@ export function BudgetPage() {
     await window.electronAPI.updateBudget(id, amount)
     setBudgets((prev) => prev.map((b) => b.id === id ? { ...b, monthly_amount: amount } : b))
     setEditingBudgetId(null)
+  }
+
+  const startEditCat = (cat: Category) => {
+    setEditingCatId(cat.id)
+    setEditCatName(cat.name)
+    setEditCatColour(cat.colour)
+    setEditCatFixed(cat.is_fixed === 1)
+  }
+
+  const saveEditCat = async (id: number) => {
+    if (!editCatName.trim()) return
+    const updated = await window.electronAPI.updateCategory(id, {
+      name: editCatName.trim(),
+      colour: editCatColour,
+      is_fixed: editCatFixed,
+    })
+    if (updated) {
+      setCategories((prev) => prev.map((c) => c.id === id ? updated : c))
+      setBudgets((prev) => prev.map((b) => b.category_id === id
+        ? { ...b, category_name: updated.name, colour: updated.colour, is_fixed: updated.is_fixed }
+        : b
+      ))
+    }
+    setEditingCatId(null)
   }
 
   const addCategory = async () => {
@@ -130,23 +160,45 @@ export function BudgetPage() {
             title="Fixed costs"
             subtitle="Predictable monthly bills"
             budgets={fixedBudgets}
-            editingId={editingBudgetId}
+            categories={categories}
+            editingBudgetId={editingBudgetId}
             editAmount={editAmount}
-            onEdit={(b) => { setEditingBudgetId(b.id); setEditAmount(String(b.monthly_amount)) }}
-            onSave={saveBudget}
-            onCancel={() => setEditingBudgetId(null)}
+            editingCatId={editingCatId}
+            editCatName={editCatName}
+            editCatColour={editCatColour}
+            editCatFixed={editCatFixed}
+            onEditBudget={(b) => { setEditingBudgetId(b.id); setEditAmount(String(b.monthly_amount)) }}
+            onSaveBudget={saveBudget}
+            onCancelBudget={() => setEditingBudgetId(null)}
             onEditAmountChange={setEditAmount}
+            onEditCat={startEditCat}
+            onSaveCat={saveEditCat}
+            onCancelCat={() => setEditingCatId(null)}
+            onEditCatName={setEditCatName}
+            onEditCatColour={setEditCatColour}
+            onEditCatFixed={setEditCatFixed}
           />
           <BudgetSection
             title="Variable costs"
             subtitle="Day-to-day spending"
             budgets={varBudgets}
-            editingId={editingBudgetId}
+            categories={categories}
+            editingBudgetId={editingBudgetId}
             editAmount={editAmount}
-            onEdit={(b) => { setEditingBudgetId(b.id); setEditAmount(String(b.monthly_amount)) }}
-            onSave={saveBudget}
-            onCancel={() => setEditingBudgetId(null)}
+            editingCatId={editingCatId}
+            editCatName={editCatName}
+            editCatColour={editCatColour}
+            editCatFixed={editCatFixed}
+            onEditBudget={(b) => { setEditingBudgetId(b.id); setEditAmount(String(b.monthly_amount)) }}
+            onSaveBudget={saveBudget}
+            onCancelBudget={() => setEditingBudgetId(null)}
             onEditAmountChange={setEditAmount}
+            onEditCat={startEditCat}
+            onSaveCat={saveEditCat}
+            onCancelCat={() => setEditingCatId(null)}
+            onEditCatName={setEditCatName}
+            onEditCatColour={setEditCatColour}
+            onEditCatFixed={setEditCatFixed}
           />
 
           {/* Add category */}
@@ -163,6 +215,8 @@ export function BudgetPage() {
                       onChange={(e) => setNewCatName(e.target.value)}
                       placeholder="e.g. Gym"
                       className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5"
+                      autoFocus
+                      onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); if (e.key === 'Escape') setShowAddCat(false) }}
                     />
                   </div>
                   <div>
@@ -304,20 +358,37 @@ export function BudgetPage() {
 }
 
 function BudgetSection({
-  title, subtitle, budgets, editingId, editAmount,
-  onEdit, onSave, onCancel, onEditAmountChange,
+  title, subtitle, budgets, categories,
+  editingBudgetId, editAmount,
+  editingCatId, editCatName, editCatColour, editCatFixed,
+  onEditBudget, onSaveBudget, onCancelBudget, onEditAmountChange,
+  onEditCat, onSaveCat, onCancelCat, onEditCatName, onEditCatColour, onEditCatFixed,
 }: {
   title: string
   subtitle: string
   budgets: Budget[]
-  editingId: number | null
+  categories: Category[]
+  editingBudgetId: number | null
   editAmount: string
-  onEdit: (b: Budget) => void
-  onSave: (id: number) => void
-  onCancel: () => void
+  editingCatId: number | null
+  editCatName: string
+  editCatColour: string
+  editCatFixed: boolean
+  onEditBudget: (b: Budget) => void
+  onSaveBudget: (id: number) => void
+  onCancelBudget: () => void
   onEditAmountChange: (v: string) => void
+  onEditCat: (c: Category) => void
+  onSaveCat: (id: number) => void
+  onCancelCat: () => void
+  onEditCatName: (v: string) => void
+  onEditCatColour: (v: string) => void
+  onEditCatFixed: (v: boolean) => void
 }) {
   const total = budgets.reduce((s, b) => s + b.monthly_amount, 0)
+
+  // Map budget category_id to a Category object for editing
+  const catById = new Map(categories.map((c) => [c.id, c]))
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -330,55 +401,113 @@ function BudgetSection({
       </div>
       <table className="w-full text-sm">
         <tbody>
-          {budgets.map((b) => (
-            <tr key={b.id} className="border-t border-gray-100 hover:bg-gray-50">
-              <td className="px-5 py-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: b.colour }}
-                  />
-                  <span className="text-gray-900">{b.category_name}</span>
-                  {b.effective_to && (
-                    <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                      ends {b.effective_to}
-                    </span>
+          {budgets.map((b) => {
+            const cat = catById.get(b.category_id)
+            const isEditingCat = editingCatId === b.category_id
+
+            return (
+              <tr key={b.id} className={`border-t border-gray-100 hover:bg-gray-50 ${isEditingCat ? 'bg-indigo-50' : ''}`}>
+                <td className="px-5 py-3">
+                  {isEditingCat ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="text"
+                        value={editCatName}
+                        onChange={(e) => onEditCatName(e.target.value)}
+                        className="text-sm border border-indigo-300 rounded-lg px-2 py-1 w-36 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter') onSaveCat(b.category_id); if (e.key === 'Escape') onCancelCat() }}
+                      />
+                      <input
+                        type="color"
+                        value={editCatColour}
+                        onChange={(e) => onEditCatColour(e.target.value)}
+                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer p-0.5"
+                        title="Category colour"
+                      />
+                      <select
+                        value={editCatFixed ? 'fixed' : 'variable'}
+                        onChange={(e) => onEditCatFixed(e.target.value === 'fixed')}
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1"
+                      >
+                        <option value="variable">Variable</option>
+                        <option value="fixed">Fixed</option>
+                      </select>
+                      <button onClick={() => onSaveCat(b.category_id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                        <Check size={14} />
+                      </button>
+                      <button onClick={onCancelCat} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ background: b.colour }}
+                      />
+                      <span className="text-gray-900">{b.category_name}</span>
+                      {b.effective_to && (
+                        <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                          ends {b.effective_to}
+                        </span>
+                      )}
+                      {cat && (
+                        <button
+                          onClick={() => onEditCat(cat)}
+                          className="p-0.5 text-gray-300 hover:text-indigo-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Edit category"
+                        >
+                          <Edit2 size={11} />
+                        </button>
+                      )}
+                    </div>
                   )}
-                </div>
-              </td>
-              <td className="px-5 py-3 text-right">
-                {editingId === b.id ? (
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="text-gray-400">£</span>
-                    <input
-                      type="number"
-                      value={editAmount}
-                      onChange={(e) => onEditAmountChange(e.target.value)}
-                      className="w-24 text-sm border border-indigo-300 rounded-lg px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      autoFocus
-                      onKeyDown={(e) => { if (e.key === 'Enter') onSave(b.id); if (e.key === 'Escape') onCancel() }}
-                    />
-                    <button onClick={() => onSave(b.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
-                      <Check size={14} />
-                    </button>
-                    <button onClick={onCancel} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="font-medium text-gray-900">£{b.monthly_amount.toFixed(0)}/mo</span>
-                    <button
-                      onClick={() => onEdit(b)}
-                      className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                  </div>
-                )}
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="px-5 py-3 text-right">
+                  {editingBudgetId === b.id ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="text-gray-400">£</span>
+                      <input
+                        type="number"
+                        value={editAmount}
+                        onChange={(e) => onEditAmountChange(e.target.value)}
+                        className="w-24 text-sm border border-indigo-300 rounded-lg px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter') onSaveBudget(b.id); if (e.key === 'Escape') onCancelBudget() }}
+                      />
+                      <button onClick={() => onSaveBudget(b.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                        <Check size={14} />
+                      </button>
+                      <button onClick={onCancelBudget} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="font-medium text-gray-900">£{b.monthly_amount.toFixed(0)}/mo</span>
+                      <button
+                        onClick={() => onEditBudget(b)}
+                        className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                        title="Edit budget amount"
+                      >
+                        <Edit2 size={13} />
+                      </button>
+                      {cat && !isEditingCat && (
+                        <button
+                          onClick={() => onEditCat(cat)}
+                          className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                          title="Edit category name/colour/type"
+                        >
+                          <Edit2 size={11} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
           {budgets.length === 0 && (
             <tr><td colSpan={2} className="px-5 py-4 text-center text-gray-400 text-sm">None</td></tr>
           )}
