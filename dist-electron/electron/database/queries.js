@@ -4,15 +4,22 @@ exports.getDb = getDb;
 exports.setDb = setDb;
 exports.categoriseTransaction = categoriseTransaction;
 exports.getAccounts = getAccounts;
+exports.addAccount = addAccount;
+exports.updateAccount = updateAccount;
 exports.importTransactions = importTransactions;
 exports.getTransactions = getTransactions;
 exports.updateTransaction = updateTransaction;
+exports.detectTransfers = detectTransfers;
+exports.applyTransfers = applyTransfers;
+exports.toggleTransfer = toggleTransfer;
 exports.getCategories = getCategories;
+exports.updateCategory = updateCategory;
 exports.addCategory = addCategory;
 exports.getBudgets = getBudgets;
 exports.updateBudget = updateBudget;
 exports.getCategorisationRules = getCategorisationRules;
 exports.addRule = addRule;
+exports.updateRule = updateRule;
 exports.deleteRule = deleteRule;
 exports.getImportHistory = getImportHistory;
 exports.getDashboardData = getDashboardData;
@@ -48,6 +55,18 @@ function categoriseTransaction(description, monzoCat) {
 // ── Accounts ──────────────────────────────────────────────────────────────────
 function getAccounts() {
     return getDb().prepare('SELECT * FROM accounts ORDER BY id').all();
+}
+function addAccount(data) {
+    const db = getDb();
+    const r = db.prepare(`
+    INSERT INTO accounts (name, bank_type, account_type, ownership_share) VALUES (?,?,?,?)
+  `).run(data.name, data.bank_type, data.account_type, data.ownership_share);
+    return db.prepare('SELECT * FROM accounts WHERE id = ?').get(r.lastInsertRowid);
+}
+function updateAccount(id, data) {
+    getDb().prepare(`UPDATE accounts SET name = ?, account_type = ?, ownership_share = ? WHERE id = ?`)
+        .run(data.name, data.account_type, data.ownership_share, id);
+    return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(id);
 }
 function importTransactions(data) {
     const db = getDb();
@@ -117,8 +136,9 @@ function getTransactions(filters = {}) {
       c.colour AS category_colour,
       c.is_fixed AS category_is_fixed,
       a.name  AS account_name,
-      a.ownership_share,
-      ROUND(t.amount * a.ownership_share, 2) AS adjusted_amount
+      a.ownership_share AS account_ownership_share,
+      COALESCE(t.ownership_share, a.ownership_share) AS ownership_share,
+      ROUND(t.amount * COALESCE(t.ownership_share, a.ownership_share), 2) AS adjusted_amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     JOIN accounts a ON t.account_id = a.id
@@ -138,13 +158,59 @@ function updateTransaction(id, updates) {
         fields.push('notes = @notes');
         params.notes = updates.notes;
     }
+    if ('ownership_share' in updates) {
+        fields.push('ownership_share = @ownership_share');
+        params.ownership_share = updates.ownership_share;
+    }
+    if ('is_transfer' in updates) {
+        fields.push('is_transfer = @is_transfer');
+        params.is_transfer = updates.is_transfer;
+    }
     if (fields.length === 0)
         return;
     db.prepare(`UPDATE transactions SET ${fields.join(', ')} WHERE id = @id`).run(params);
 }
+function detectTransfers(windowDays = 5) {
+    return getDb().prepare(`
+    SELECT
+      t1.id AS out_id, t1.date AS out_date, t1.description AS out_desc,
+      ROUND(t1.amount, 2) AS out_amount,
+      a1.name AS out_account, a1.account_type AS out_account_type,
+      t2.id AS in_id, t2.date AS in_date, t2.description AS in_desc,
+      ROUND(t2.amount, 2) AS in_amount,
+      a2.name AS in_account, a2.account_type AS in_account_type
+    FROM transactions t1
+    JOIN accounts a1 ON t1.account_id = a1.id
+    JOIN transactions t2 ON t2.account_id != t1.account_id
+    JOIN accounts a2 ON t2.account_id = a2.id
+    WHERE t1.is_transfer = 0
+      AND t2.is_transfer = 0
+      AND t1.amount > 0
+      AND t2.amount < 0
+      AND ABS(t1.amount + t2.amount) < 0.02
+      AND ABS(JULIANDAY(t1.date) - JULIANDAY(t2.date)) <= @windowDays
+    ORDER BY t1.date DESC
+    LIMIT 300
+  `).all({ windowDays });
+}
+function applyTransfers(txIds) {
+    const db = getDb();
+    const update = db.prepare('UPDATE transactions SET is_transfer = 1 WHERE id = ?');
+    db.transaction(() => {
+        for (const id of txIds)
+            update.run(id);
+    })();
+}
+function toggleTransfer(id) {
+    getDb().prepare(`UPDATE transactions SET is_transfer = CASE WHEN is_transfer = 1 THEN 0 ELSE 1 END WHERE id = ?`).run(id);
+}
 // ── Categories ────────────────────────────────────────────────────────────────
 function getCategories() {
     return getDb().prepare('SELECT * FROM categories ORDER BY sort_order, name').all();
+}
+function updateCategory(id, data) {
+    getDb().prepare(`UPDATE categories SET name = ?, colour = ?, is_fixed = ? WHERE id = ?`).run(data.name, data.colour, data.is_fixed ? 1 : 0, id);
+    return getDb().prepare('SELECT * FROM categories WHERE id = ?').get(id);
 }
 function addCategory(data) {
     const db = getDb();
@@ -189,6 +255,14 @@ function addRule(data) {
     JOIN categories c ON r.category_id = c.id WHERE r.id = ?
   `).get(r.lastInsertRowid);
 }
+function updateRule(id, data) {
+    getDb().prepare(`UPDATE categorisation_rules SET keyword = ?, category_id = ?, priority = ? WHERE id = ?`)
+        .run(data.keyword, data.category_id, data.priority, id);
+    return getDb().prepare(`
+    SELECT r.*, c.name AS category_name FROM categorisation_rules r
+    JOIN categories c ON r.category_id = c.id WHERE r.id = ?
+  `).get(id);
+}
 function deleteRule(id) {
     getDb().prepare('DELETE FROM categorisation_rules WHERE id = ?').run(id);
 }
@@ -204,9 +278,8 @@ function getImportHistory() {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function getDashboardData(month) {
     const db = getDb();
-    // month = 'YYYY-MM'
     const monthStart = `${month}-01`;
-    // Category actuals
+    // Category actuals (excluding transfers)
     const categoryActuals = db.prepare(`
     SELECT
       c.id   AS category_id,
@@ -214,7 +287,7 @@ function getDashboardData(month) {
       c.colour,
       c.is_fixed,
       c.sort_order,
-      COALESCE(ROUND(SUM(CASE WHEN t.amount > 0 THEN t.amount * a.ownership_share ELSE 0 END), 2), 0) AS actual,
+      COALESCE(ROUND(SUM(CASE WHEN t.amount > 0 AND (t.is_transfer = 0 OR t.is_transfer IS NULL) THEN t.amount * a.ownership_share ELSE 0 END), 2), 0) AS actual,
       COALESCE(b.monthly_amount, 0) AS budget
     FROM categories c
     LEFT JOIN transactions t
@@ -228,8 +301,8 @@ function getDashboardData(month) {
     GROUP BY c.id
     ORDER BY c.sort_order, c.name
   `).all({ month, monthStart });
-    // Daily spending (for chart)
-    const daily = db.prepare(`
+    // Raw daily spending from DB (only days that have transactions)
+    const rawDaily = db.prepare(`
     SELECT
       t.date,
       ROUND(SUM(t.amount * a.ownership_share), 2) AS daily_amount
@@ -237,38 +310,59 @@ function getDashboardData(month) {
     JOIN accounts a ON t.account_id = a.id
     WHERE strftime('%Y-%m', t.date) = @month
       AND t.amount > 0
+      AND (t.is_transfer = 0 OR t.is_transfer IS NULL)
     GROUP BY t.date
     ORDER BY t.date
   `).all({ month });
-    // Build cumulative with pace
+    // Variable budget total
     const variableBudget = categoryActuals
         .filter((c) => !c.is_fixed)
         .reduce((s, c) => s + c.budget, 0);
+    // ── KEY FIX: Fill every day so the pace line never disappears ─────────────
     const [y, m] = month.split('-').map(Number);
     const daysInMonth = new Date(y, m, 0).getDate();
+    const today = new Date();
+    const isCurrentMonth = today.getFullYear() === y && (today.getMonth() + 1) === m;
+    // For the current month only go up to today; for past months fill the whole month
+    const lastDay = isCurrentMonth ? today.getDate() : daysInMonth;
+    const dailyMap = new Map(rawDaily.map((d) => [d.date, d.daily_amount]));
     let cumulative = 0;
-    const dailySpending = daily.map((d) => {
-        cumulative = Math.round((cumulative + d.daily_amount) * 100) / 100;
-        const dayNum = parseInt(d.date.slice(8), 10);
-        return {
-            date: d.date,
+    const dailySpending = [];
+    for (let day = 1; day <= lastDay; day++) {
+        const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+        const dayAmt = dailyMap.get(dateStr) ?? 0;
+        cumulative = Math.round((cumulative + dayAmt) * 100) / 100;
+        dailySpending.push({
+            date: dateStr,
             cumulative,
-            pace: Math.round((variableBudget / daysInMonth) * dayNum * 100) / 100,
-        };
-    });
-    // Total income
+            pace: Math.round((variableBudget / daysInMonth) * day * 100) / 100,
+        });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Total income (excluding transfers)
     const { total_income } = db.prepare(`
     SELECT COALESCE(ROUND(SUM(ABS(t.amount) * a.ownership_share), 2), 0) AS total_income
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
     WHERE strftime('%Y-%m', t.date) = @month
       AND t.amount < 0
+      AND (t.is_transfer = 0 OR t.is_transfer IS NULL)
+  `).get({ month });
+    // Savings deposited this month
+    const { savings_deposited } = db.prepare(`
+    SELECT COALESCE(ROUND(SUM(ABS(t.amount) * COALESCE(t.ownership_share, a.ownership_share)), 2), 0) AS savings_deposited
+    FROM transactions t
+    JOIN accounts a ON t.account_id = a.id
+    WHERE strftime('%Y-%m', t.date) = @month
+      AND t.amount < 0
+      AND t.is_transfer = 1
+      AND a.account_type = 'savings'
   `).get({ month });
     // Total spent (variable only)
     const totalSpent = categoryActuals
         .filter((c) => !c.is_fixed)
         .reduce((s, c) => s + c.actual, 0);
-    // Fixed costs status (has a transaction appeared this month?)
+    // Fixed costs status
     const fixedCosts = db.prepare(`
     SELECT
       c.id   AS category_id,
@@ -289,7 +383,7 @@ function getDashboardData(month) {
     GROUP BY c.id
     ORDER BY c.sort_order
   `).all({ month, monthStart });
-    // Count uncategorised transactions (Other / misc) this month
+    // Uncategorised count
     const otherCat = db.prepare(`SELECT id FROM categories WHERE name = 'Other / misc'`).get();
     let uncategorisedCount = 0;
     if (otherCat) {
@@ -309,6 +403,7 @@ function getDashboardData(month) {
         budgetTotal: categoryActuals.reduce((s, c) => s + c.budget, 0),
         daysInMonth,
         uncategorisedCount,
+        savingsDeposited: savings_deposited,
     };
 }
 // ── Export / delete ───────────────────────────────────────────────────────────
