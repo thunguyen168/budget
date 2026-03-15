@@ -106,6 +106,8 @@ function registerIpcHandlers() {
     electron_1.ipcMain.handle('db:getCategories', () => Q.getCategories());
     electron_1.ipcMain.handle('db:addCategory', (_e, data) => Q.addCategory(data));
     electron_1.ipcMain.handle('db:updateCategory', (_e, id, data) => Q.updateCategory(id, data));
+    electron_1.ipcMain.handle('db:deleteCategory', (_e, id) => Q.deleteCategory(id));
+    electron_1.ipcMain.handle('db:getSavingsHistory', () => Q.getSavingsHistory());
     electron_1.ipcMain.handle('db:getBudgets', (_e, forDate) => Q.getBudgets(forDate));
     electron_1.ipcMain.handle('db:updateBudget', (_e, id, amount) => Q.updateBudget(id, amount));
     electron_1.ipcMain.handle('db:getRules', () => Q.getCategorisationRules());

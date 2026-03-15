@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { format, addMonths, subMonths, getDaysInMonth } from 'date-fns'
+import { format, addMonths, subMonths } from 'date-fns'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   AreaChart, Area, CartesianGrid, Legend,
@@ -78,14 +78,19 @@ function BudgetTooltip({ active, payload, label }: { active?: boolean; payload?:
 export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransactions: (categoryId?: number) => void }) {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [data, setData] = useState<DashboardData | null>(null)
+  const [savingsHistory, setSavingsHistory] = useState<Array<{ month: string; amount: number }>>([])
   const [loading, setLoading] = useState(true)
 
   const month = monthKey(selectedDate)
 
   useEffect(() => {
     setLoading(true)
-    window.electronAPI.getDashboardData(month).then((d) => {
+    Promise.all([
+      window.electronAPI.getDashboardData(month),
+      window.electronAPI.getSavingsHistory(),
+    ]).then(([d, sh]) => {
       setData(d)
+      setSavingsHistory(sh)
       setLoading(false)
     })
   }, [month])
@@ -292,6 +297,52 @@ export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransa
           )}
         </div>
       </div>
+
+      {/* Savings overview */}
+      {savingsHistory.length > 0 && (() => {
+        const totalSaved = savingsHistory.reduce((s, m) => s + m.amount, 0)
+        const recent = savingsHistory.slice(-6)
+        const maxAmt = Math.max(...recent.map((m) => m.amount), 1)
+        return (
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <PiggyBank size={16} className="text-emerald-500" />
+                <h2 className="text-base font-semibold text-gray-900">Savings</h2>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold text-emerald-700">{fmt(totalSaved)} total</p>
+                <p className="text-xs text-gray-400">all time</p>
+              </div>
+            </div>
+            <div className="flex items-end gap-1.5 h-16">
+              {recent.map((m) => {
+                const isCurrentMonth = m.month === monthKey(new Date())
+                const heightPct = (m.amount / maxAmt) * 100
+                return (
+                  <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full flex items-end" style={{ height: 48 }}>
+                      <div
+                        className={`w-full rounded-t transition-all ${isCurrentMonth ? 'bg-emerald-500' : 'bg-emerald-200'}`}
+                        style={{ height: `${Math.max(heightPct, 4)}%` }}
+                        title={`${format(new Date(m.month + '-02'), 'MMM yy')}: ${fmt(m.amount)}`}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-400 truncate w-full text-center">
+                      {format(new Date(m.month + '-02'), 'MMM')}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {data!.savingsDeposited > 0 && (
+              <p className="text-xs text-emerald-600 mt-3 font-medium">
+                {fmt(data!.savingsDeposited)} saved this month
+              </p>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Fixed costs status */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">

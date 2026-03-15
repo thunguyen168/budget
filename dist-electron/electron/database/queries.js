@@ -15,6 +15,8 @@ exports.toggleTransfer = toggleTransfer;
 exports.getCategories = getCategories;
 exports.updateCategory = updateCategory;
 exports.addCategory = addCategory;
+exports.deleteCategory = deleteCategory;
+exports.getSavingsHistory = getSavingsHistory;
 exports.getBudgets = getBudgets;
 exports.updateBudget = updateBudget;
 exports.getCategorisationRules = getCategorisationRules;
@@ -209,16 +211,50 @@ function getCategories() {
     return getDb().prepare('SELECT * FROM categories ORDER BY sort_order, name').all();
 }
 function updateCategory(id, data) {
-    getDb().prepare(`UPDATE categories SET name = ?, colour = ?, is_fixed = ? WHERE id = ?`).run(data.name, data.colour, data.is_fixed ? 1 : 0, id);
-    return getDb().prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    const db = getDb();
+    const existing = db.prepare(`SELECT id FROM categories WHERE name = ? AND id != ?`).get(data.name, id);
+    if (existing)
+        throw new Error(`A category named "${data.name}" already exists.`);
+    db.prepare(`UPDATE categories SET name = ?, colour = ?, is_fixed = ? WHERE id = ?`).run(data.name, data.colour, data.is_fixed ? 1 : 0, id);
+    return db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
 }
 function addCategory(data) {
     const db = getDb();
+    const existing = db.prepare(`SELECT id FROM categories WHERE name = ?`).get(data.name);
+    if (existing)
+        throw new Error(`A category named "${data.name}" already exists.`);
     const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM categories').get().m ?? 0;
     const r = db.prepare(`
     INSERT INTO categories (name, colour, is_fixed, sort_order) VALUES (?,?,?,?)
   `).run(data.name, data.colour, data.is_fixed ? 1 : 0, maxOrder + 1);
     return db.prepare('SELECT * FROM categories WHERE id = ?').get(r.lastInsertRowid);
+}
+function deleteCategory(id) {
+    const db = getDb();
+    db.transaction(() => {
+        // Unassign any transactions using this category
+        db.prepare('UPDATE transactions SET category_id = NULL, is_manually_categorised = 0 WHERE category_id = ?').run(id);
+        // Remove budget entries for this category
+        db.prepare('DELETE FROM budgets WHERE category_id = ?').run(id);
+        // Remove categorisation rules for this category
+        db.prepare('DELETE FROM categorisation_rules WHERE category_id = ?').run(id);
+        // Delete the category
+        db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    })();
+}
+function getSavingsHistory() {
+    return getDb().prepare(`
+    SELECT
+      strftime('%Y-%m', t.date) AS month,
+      ROUND(SUM(ABS(t.amount) * COALESCE(t.ownership_share, a.ownership_share)), 2) AS amount
+    FROM transactions t
+    JOIN accounts a ON t.account_id = a.id
+    WHERE t.amount < 0
+      AND t.is_transfer = 1
+      AND a.account_type = 'savings'
+    GROUP BY strftime('%Y-%m', t.date)
+    ORDER BY month ASC
+  `).all();
 }
 // ── Budgets ───────────────────────────────────────────────────────────────────
 function getBudgets(forDate) {
