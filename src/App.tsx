@@ -17,9 +17,9 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="h-screen overflow-hidden bg-gray-50" style={{ display: 'grid', gridTemplateColumns: '14rem 1fr' }}>
       <Sidebar current={page} onChange={(p) => setPage(p)} />
-      <main className="flex-1 overflow-auto min-w-0">
+      <main className="overflow-auto min-w-0">
         {page === 'dashboard' && (
           <DashboardPage onNavigateToTransactions={navigateToTransactions} />
         )}
