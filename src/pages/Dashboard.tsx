@@ -299,7 +299,7 @@ export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransa
       </div>
 
       {/* Savings overview */}
-      {savingsHistory.length > 0 && (() => {
+      {(() => {
         const totalSaved = savingsHistory.reduce((s, m) => s + m.amount, 0)
         const recent = savingsHistory.slice(-6)
         const maxAmt = Math.max(...recent.map((m) => m.amount), 1)
@@ -310,34 +310,40 @@ export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransa
                 <PiggyBank size={16} className="text-emerald-500" />
                 <h2 className="text-base font-semibold text-gray-900">Savings</h2>
               </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-emerald-700">{fmt(totalSaved)} total</p>
-                <p className="text-xs text-gray-400">all time</p>
-              </div>
+              {totalSaved > 0 && (
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-emerald-700">{fmt(totalSaved)} total</p>
+                  <p className="text-xs text-gray-400">all time</p>
+                </div>
+              )}
             </div>
-            <div className="flex items-end gap-1.5 h-16">
-              {recent.map((m) => {
-                const isCurrentMonth = m.month === monthKey(new Date())
-                const heightPct = (m.amount / maxAmt) * 100
-                return (
-                  <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full flex items-end" style={{ height: 48 }}>
-                      <div
-                        className={`w-full rounded-t transition-all ${isCurrentMonth ? 'bg-emerald-500' : 'bg-emerald-200'}`}
-                        style={{ height: `${Math.max(heightPct, 4)}%` }}
-                        title={`${format(new Date(m.month + '-02'), 'MMM yy')}: ${fmt(m.amount)}`}
-                      />
+            {recent.length === 0 ? (
+              <p className="text-gray-400 text-sm py-4 text-center">No savings recorded yet — transfer money to a savings account to track it here</p>
+            ) : (
+              <div className="flex items-end gap-1.5 h-16">
+                {recent.map((m) => {
+                  const isCurrent = m.month === monthKey(new Date())
+                  const heightPct = (m.amount / maxAmt) * 100
+                  return (
+                    <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full flex items-end" style={{ height: 48 }}>
+                        <div
+                          className={`w-full rounded-t transition-all ${isCurrent ? 'bg-emerald-500' : 'bg-emerald-200'}`}
+                          style={{ height: `${Math.max(heightPct, 4)}%` }}
+                          title={`${format(new Date(m.month + '-02'), 'MMM yy')}: ${fmt(m.amount)}`}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-400 truncate w-full text-center">
+                        {format(new Date(m.month + '-02'), 'MMM')}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-400 truncate w-full text-center">
-                      {format(new Date(m.month + '-02'), 'MMM')}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-            {data!.savingsDeposited > 0 && (
+                  )
+                })}
+              </div>
+            )}
+            {data.savingsDeposited > 0 && (
               <p className="text-xs text-emerald-600 mt-3 font-medium">
-                {fmt(data!.savingsDeposited)} saved this month
+                {fmt(data.savingsDeposited)} saved this month
               </p>
             )}
           </div>
