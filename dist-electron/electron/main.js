@@ -92,6 +92,11 @@ function registerIpcHandlers() {
         return (0, index_1.parseCSVFile)(filePath);
     });
     electron_1.ipcMain.handle('db:getAccounts', () => Q.getAccounts());
+    electron_1.ipcMain.handle('db:addAccount', (_e, data) => Q.addAccount(data));
+    electron_1.ipcMain.handle('db:updateAccount', (_e, id, data) => Q.updateAccount(id, data));
+    electron_1.ipcMain.handle('db:detectTransfers', (_e, windowDays) => Q.detectTransfers(windowDays));
+    electron_1.ipcMain.handle('db:applyTransfers', (_e, txIds) => Q.applyTransfers(txIds));
+    electron_1.ipcMain.handle('db:toggleTransfer', (_e, id) => Q.toggleTransfer(id));
     electron_1.ipcMain.handle('db:importTransactions', (_e, data) => Q.importTransactions(data));
     electron_1.ipcMain.handle('db:getImportHistory', () => Q.getImportHistory());
     electron_1.ipcMain.handle('db:getTransactions', (_e, filters) => Q.getTransactions(filters ?? {}));
@@ -100,10 +105,12 @@ function registerIpcHandlers() {
     });
     electron_1.ipcMain.handle('db:getCategories', () => Q.getCategories());
     electron_1.ipcMain.handle('db:addCategory', (_e, data) => Q.addCategory(data));
+    electron_1.ipcMain.handle('db:updateCategory', (_e, id, data) => Q.updateCategory(id, data));
     electron_1.ipcMain.handle('db:getBudgets', (_e, forDate) => Q.getBudgets(forDate));
     electron_1.ipcMain.handle('db:updateBudget', (_e, id, amount) => Q.updateBudget(id, amount));
     electron_1.ipcMain.handle('db:getRules', () => Q.getCategorisationRules());
     electron_1.ipcMain.handle('db:addRule', (_e, data) => Q.addRule(data));
+    electron_1.ipcMain.handle('db:updateRule', (_e, id, data) => Q.updateRule(id, data));
     electron_1.ipcMain.handle('db:deleteRule', (_e, id) => Q.deleteRule(id));
     electron_1.ipcMain.handle('db:getDashboardData', (_e, month) => Q.getDashboardData(month));
     electron_1.ipcMain.handle('db:exportData', async () => {
