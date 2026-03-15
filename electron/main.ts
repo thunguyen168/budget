@@ -99,6 +99,8 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('db:addRule', (_e, data) => Q.addRule(data))
 
+  ipcMain.handle('db:updateRule', (_e, id: number, data) => Q.updateRule(id, data))
+
   ipcMain.handle('db:deleteRule', (_e, id: number) => Q.deleteRule(id))
 
   ipcMain.handle('db:getDashboardData', (_e, month: string) => Q.getDashboardData(month))

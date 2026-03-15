@@ -56,6 +56,8 @@ const api = {
     ipcRenderer.invoke('db:getRules'),
   addRule: (data: unknown) =>
     ipcRenderer.invoke('db:addRule', data),
+  updateRule: (id: number, data: unknown) =>
+    ipcRenderer.invoke('db:updateRule', id, data),
   deleteRule: (id: number) =>
     ipcRenderer.invoke('db:deleteRule', id),
 

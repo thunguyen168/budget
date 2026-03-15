@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Edit2, Check, X, Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react'
+import { Edit2, Check, X, Plus, Trash2, TrendingUp, TrendingDown, Pencil } from 'lucide-react'
 import type { Budget, Category, CategorisationRule, CategoryActual } from '../types'
 
 type Tab = 'budgets' | 'rules'
@@ -50,6 +50,12 @@ export function BudgetPage() {
   const [newKeyword, setNewKeyword]           = useState('')
   const [newRuleCatId, setNewRuleCatId]       = useState<string>('')
   const [newRulePriority, setNewRulePriority] = useState<string>('50')
+
+  // Edit rule
+  const [editingRuleId, setEditingRuleId]         = useState<number | null>(null)
+  const [editRuleKeyword, setEditRuleKeyword]     = useState<string>('')
+  const [editRuleCatId, setEditRuleCatId]         = useState<string>('')
+  const [editRulePriority, setEditRulePriority]   = useState<string>('')
 
   const today    = new Date().toISOString().slice(0, 10)
   const curMonth = today.slice(0, 7)
@@ -132,6 +138,26 @@ export function BudgetPage() {
     setRules((prev) => prev.filter((r) => r.id !== id))
   }
 
+  const startEditRule = (r: import('../types').CategorisationRule) => {
+    setEditingRuleId(r.id)
+    setEditRuleKeyword(r.keyword)
+    setEditRuleCatId(String(r.category_id))
+    setEditRulePriority(String(r.priority))
+  }
+
+  const saveEditRule = async (id: number) => {
+    if (!editRuleKeyword.trim() || !editRuleCatId) return
+    const updated = await window.electronAPI.updateRule(id, {
+      keyword: editRuleKeyword.trim(),
+      category_id: Number(editRuleCatId),
+      priority: Number(editRulePriority) || 50,
+    })
+    if (updated) {
+      setRules((prev) => prev.map((r) => r.id === id ? updated : r))
+    }
+    setEditingRuleId(null)
+  }
+
   if (loading) return (
     <div className="p-8 flex items-center justify-center h-64">
       <div className="text-gray-400 text-sm">Loading…</div>
@@ -147,7 +173,7 @@ export function BudgetPage() {
   const overCount = varBudgets.filter((b) => (actuals.get(b.category_id) ?? 0) > b.monthly_amount).length
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 w-full">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -360,19 +386,70 @@ export function BudgetPage() {
               </thead>
               <tbody>
                 {rules.map((r) => (
-                  <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-mono text-gray-800 text-xs">{r.keyword}</td>
-                    <td className="px-4 py-2.5 text-gray-700">{r.category_name}</td>
-                    <td className="px-4 py-2.5 text-right text-gray-500">{r.priority}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={() => deleteRule(r.id)}
-                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </td>
-                  </tr>
+                  editingRuleId === r.id ? (
+                    <tr key={r.id} className="border-t border-gray-100 bg-indigo-50/40">
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={editRuleKeyword}
+                          onChange={(e) => setEditRuleKeyword(e.target.value)}
+                          className="w-full text-xs font-mono border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === 'Enter') saveEditRule(r.id); if (e.key === 'Escape') setEditingRuleId(null) }}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          value={editRuleCatId}
+                          onChange={(e) => setEditRuleCatId(e.target.value)}
+                          className="w-full text-xs border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        >
+                          <option value="">Select…</option>
+                          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          value={editRulePriority}
+                          onChange={(e) => setEditRulePriority(e.target.value)}
+                          className="w-16 text-xs border border-indigo-300 rounded px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-indigo-300 ml-auto block"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => saveEditRule(r.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                            <Check size={13} />
+                          </button>
+                          <button onClick={() => setEditingRuleId(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 group">
+                      <td className="px-4 py-2.5 font-mono text-gray-800 text-xs">{r.keyword}</td>
+                      <td className="px-4 py-2.5 text-gray-700">{r.category_name}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-500">{r.priority}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => startEditRule(r)}
+                            className="p-1 text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => deleteRule(r.id)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
                 ))}
                 {rules.length === 0 && (
                   <tr>

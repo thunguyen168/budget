@@ -115,7 +115,7 @@ export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransa
   }))
 
   return (
-    <div className="p-8 max-w-6xl space-y-8">
+    <div className="p-8 w-full space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

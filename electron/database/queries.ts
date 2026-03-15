@@ -315,6 +315,15 @@ export function addRule(data: { keyword: string; category_id: number; priority: 
   `).get(r.lastInsertRowid)
 }
 
+export function updateRule(id: number, data: { keyword: string; category_id: number; priority: number }) {
+  getDb().prepare(`UPDATE categorisation_rules SET keyword = ?, category_id = ?, priority = ? WHERE id = ?`)
+    .run(data.keyword, data.category_id, data.priority, id)
+  return getDb().prepare(`
+    SELECT r.*, c.name AS category_name FROM categorisation_rules r
+    JOIN categories c ON r.category_id = c.id WHERE r.id = ?
+  `).get(id)
+}
+
 export function deleteRule(id: number) {
   getDb().prepare('DELETE FROM categorisation_rules WHERE id = ?').run(id)
 }

@@ -103,7 +103,7 @@ export function AccountsPage() {
   if (loading) return <div className="p-8 text-gray-400 text-sm">Loading…</div>
 
   return (
-    <div className="p-8 max-w-3xl space-y-8">
+    <div className="p-8 w-full space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Accounts</h1>
         <p className="text-gray-500 text-sm mt-0.5">Manage accounts and detect internal transfers</p>
