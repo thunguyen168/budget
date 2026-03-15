@@ -43,6 +43,7 @@ export interface Transaction {
   category_colour?: string
   category_is_fixed?: number
   account_name?: string
+  account_ownership_share?: number
   ownership_share?: number
   adjusted_amount?: number
 }
@@ -149,9 +150,10 @@ declare global {
       importTransactions(data: { accountId: number; filename: string; transactions: ParsedTransaction[] }): Promise<ImportResult>
       getImportHistory(): Promise<ImportRecord[]>
       getTransactions(filters?: TransactionFilters): Promise<Transaction[]>
-      updateTransaction(id: number, updates: { category_id?: number; notes?: string }): Promise<void>
+      updateTransaction(id: number, updates: { category_id?: number; notes?: string; ownership_share?: number | null }): Promise<void>
       getCategories(): Promise<Category[]>
       addCategory(data: { name: string; colour: string; is_fixed: boolean }): Promise<Category>
+      updateCategory(id: number, data: { name: string; colour: string; is_fixed: boolean }): Promise<Category>
       getBudgets(forDate?: string): Promise<Budget[]>
       updateBudget(id: number, amount: number): Promise<void>
       getCategorisationRules(): Promise<CategorisationRule[]>

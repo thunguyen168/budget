@@ -64,4 +64,10 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_external_id ON transactions(external_id);
   `)
+
+  // Migrations for existing databases
+  const txCols = (db.prepare(`PRAGMA table_info(transactions)`).all() as { name: string }[]).map((c) => c.name)
+  if (!txCols.includes('ownership_share')) {
+    db.exec(`ALTER TABLE transactions ADD COLUMN ownership_share REAL`)
+  }
 }

@@ -37,6 +37,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editCategoryId, setEditCategoryId] = useState<string>('')
   const [editNotes, setEditNotes] = useState<string>('')
+  const [editSplit, setEditSplit] = useState<number | null>(null) // null = use account default
 
   useEffect(() => {
     Promise.all([window.electronAPI.getCategories(), window.electronAPI.getAccounts()]).then(
@@ -68,12 +69,19 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
     setEditingId(t.id)
     setEditCategoryId(t.category_id ? String(t.category_id) : '')
     setEditNotes(t.notes ?? '')
+    // If the transaction has its own override, use it; otherwise null (= account default)
+    const acctShare = t.account_ownership_share ?? 1
+    const txShare = t.ownership_share ?? acctShare
+    // Only set an override if tx has an explicit non-account value
+    // We compare rounded to avoid float weirdness
+    setEditSplit(Math.round(txShare * 100) !== Math.round(acctShare * 100) ? txShare : null)
   }
 
-  const saveEdit = async (id: number) => {
+  const saveEdit = async (id: number, acctShare: number) => {
     await window.electronAPI.updateTransaction(id, {
       category_id: editCategoryId ? Number(editCategoryId) : undefined,
       notes: editNotes,
+      ownership_share: editSplit,
     })
     setEditingId(null)
     fetchTransactions()
@@ -210,99 +218,168 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
               ) : sorted.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No transactions found</td></tr>
-              ) : sorted.map((t) => (
-                <tr
-                  key={t.id}
-                  className={`border-t border-gray-100 hover:bg-gray-50 ${editingId === t.id ? 'bg-indigo-50' : ''}`}
-                >
-                  <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
-                    {format(new Date(t.date), 'd MMM yyyy')}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="text-gray-900 max-w-xs truncate">{t.description}</div>
-                    {t.notes && <div className="text-xs text-gray-400 mt-0.5 truncate">{t.notes}</div>}
-                    {t.is_manually_categorised ? (
-                      <span className="text-xs text-indigo-400">manually categorised</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      BANK_COLOURS[t.account_name?.toLowerCase() ?? ''] ?? 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {t.account_name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {editingId === t.id ? (
-                      <div className="flex flex-col gap-1">
-                        <select
-                          value={editCategoryId}
-                          onChange={(e) => setEditCategoryId(e.target.value)}
-                          className="text-xs border border-gray-300 rounded px-2 py-1"
-                          autoFocus
-                        >
-                          <option value="">Uncategorised</option>
-                          {categories.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          placeholder="Notes…"
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          className="text-xs border border-gray-300 rounded px-2 py-1"
-                        />
-                      </div>
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                        style={{ background: t.category_colour ?? '#6b7280' }}
-                      >
-                        {t.category_name ?? (
-                          <span className="text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full text-xs">
-                            Uncategorised
-                          </span>
-                        )}
+              ) : sorted.map((t) => {
+                const acctShare = t.account_ownership_share ?? 1
+                const effectiveShare = t.ownership_share ?? acctShare
+                const hasOverride = Math.round(effectiveShare * 100) !== Math.round(acctShare * 100)
+
+                return (
+                  <tr
+                    key={t.id}
+                    className={`border-t border-gray-100 hover:bg-gray-50 ${editingId === t.id ? 'bg-indigo-50' : ''}`}
+                  >
+                    <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
+                      {format(new Date(t.date), 'd MMM yyyy')}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="text-gray-900 max-w-xs truncate">{t.description}</div>
+                      {t.notes && <div className="text-xs text-gray-400 mt-0.5 truncate">{t.notes}</div>}
+                      {t.is_manually_categorised ? (
+                        <span className="text-xs text-indigo-400">manually categorised</span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        BANK_COLOURS[t.account_name?.toLowerCase() ?? ''] ?? 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {t.account_name}
                       </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
-                    {fmtAmt(t)}
-                    {(t.ownership_share ?? 1) < 1 && (
-                      <span className="text-xs text-gray-400 ml-1">({Math.round((t.ownership_share ?? 1) * 100)}%)</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    {editingId === t.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => saveEdit(t.id)}
-                          className="p-1 text-green-600 hover:bg-green-50 rounded"
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {editingId === t.id ? (
+                        <div className="flex flex-col gap-1">
+                          <select
+                            value={editCategoryId}
+                            onChange={(e) => setEditCategoryId(e.target.value)}
+                            className="text-xs border border-gray-300 rounded px-2 py-1"
+                            autoFocus
+                          >
+                            <option value="">Uncategorised</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Notes…"
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            className="text-xs border border-gray-300 rounded px-2 py-1"
+                          />
+                          {/* Split toggle — only shown when account has a non-100% default */}
+                          <SplitToggle
+                            acctShare={acctShare}
+                            value={editSplit}
+                            onChange={setEditSplit}
+                          />
+                        </div>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                          style={{ background: t.category_colour ?? '#6b7280' }}
                         >
-                          <Check size={14} />
-                        </button>
+                          {t.category_name ?? (
+                            <span className="text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full text-xs">
+                              Uncategorised
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
+                      {fmtAmt(t)}
+                      {effectiveShare < 1 && (
+                        <span className={`text-xs ml-1 ${hasOverride ? 'text-indigo-500 font-semibold' : 'text-gray-400'}`}>
+                          ({Math.round(effectiveShare * 100)}%)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {editingId === t.id ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => saveEdit(t.id, acctShare)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
                         <button
-                          onClick={() => setEditingId(null)}
-                          className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                          onClick={() => startEdit(t)}
+                          className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
                         >
-                          <X size={14} />
+                          <Edit2 size={14} />
                         </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => startEdit(t)}
-                        className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function SplitToggle({
+  acctShare,
+  value,
+  onChange,
+}: {
+  acctShare: number
+  value: number | null
+  onChange: (v: number | null) => void
+}) {
+  // The effective share being shown
+  const effective = value ?? acctShare
+
+  // Build button options: always include 100% and 50%; if account default is something else, include that too
+  const options: { label: string; share: number | null }[] = []
+
+  // "Account default" option (null = use account default)
+  options.push({ label: `Default (${Math.round(acctShare * 100)}%)`, share: null })
+
+  // If account default isn't 100%, offer 100%
+  if (Math.round(acctShare * 100) !== 100) {
+    options.push({ label: '100% (just me)', share: 1 })
+  }
+
+  // If account default isn't 50%, offer 50%
+  if (Math.round(acctShare * 100) !== 50) {
+    options.push({ label: '50/50 split', share: 0.5 })
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-gray-400 mb-1">Split</p>
+      <div className="flex gap-1 flex-wrap">
+        {options.map((opt) => {
+          const active = opt.share === null ? value === null : value !== null && Math.round(value * 100) === Math.round(opt.share * 100)
+
+          return (
+            <button
+              key={opt.label}
+              type="button"
+              onClick={() => onChange(opt.share)}
+              className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                active
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+              }`}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

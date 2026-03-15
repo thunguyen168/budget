@@ -150,8 +150,9 @@ export function getTransactions(filters: TransactionFilters = {}) {
       c.colour AS category_colour,
       c.is_fixed AS category_is_fixed,
       a.name  AS account_name,
-      a.ownership_share,
-      ROUND(t.amount * a.ownership_share, 2) AS adjusted_amount
+      a.ownership_share AS account_ownership_share,
+      COALESCE(t.ownership_share, a.ownership_share) AS ownership_share,
+      ROUND(t.amount * COALESCE(t.ownership_share, a.ownership_share), 2) AS adjusted_amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     JOIN accounts a ON t.account_id = a.id
@@ -160,7 +161,7 @@ export function getTransactions(filters: TransactionFilters = {}) {
   `).all(params)
 }
 
-export function updateTransaction(id: number, updates: { category_id?: number; notes?: string }) {
+export function updateTransaction(id: number, updates: { category_id?: number; notes?: string; ownership_share?: number | null }) {
   const db = getDb()
   const fields: string[] = []
   const params: Record<string, unknown> = { id }
@@ -173,6 +174,10 @@ export function updateTransaction(id: number, updates: { category_id?: number; n
     fields.push('notes = @notes')
     params.notes = updates.notes
   }
+  if ('ownership_share' in updates) {
+    fields.push('ownership_share = @ownership_share')
+    params.ownership_share = updates.ownership_share
+  }
   if (fields.length === 0) return
 
   db.prepare(`UPDATE transactions SET ${fields.join(', ')} WHERE id = @id`).run(params)
@@ -182,6 +187,11 @@ export function updateTransaction(id: number, updates: { category_id?: number; n
 
 export function getCategories() {
   return getDb().prepare('SELECT * FROM categories ORDER BY sort_order, name').all()
+}
+
+export function updateCategory(id: number, data: { name: string; colour: string; is_fixed: boolean }) {
+  getDb().prepare(`UPDATE categories SET name = ?, colour = ?, is_fixed = ? WHERE id = ?`).run(data.name, data.colour, data.is_fixed ? 1 : 0, id)
+  return getDb().prepare('SELECT * FROM categories WHERE id = ?').get(id)
 }
 
 export function addCategory(data: { name: string; colour: string; is_fixed: boolean }) {
