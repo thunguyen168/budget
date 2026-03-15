@@ -40,6 +40,20 @@ export function getAccounts() {
   return getDb().prepare('SELECT * FROM accounts ORDER BY id').all()
 }
 
+export function addAccount(data: { name: string; bank_type: string; account_type: string; ownership_share: number }) {
+  const db = getDb()
+  const r = db.prepare(`
+    INSERT INTO accounts (name, bank_type, account_type, ownership_share) VALUES (?,?,?,?)
+  `).run(data.name, data.bank_type, data.account_type, data.ownership_share) as Database.RunResult
+  return db.prepare('SELECT * FROM accounts WHERE id = ?').get(r.lastInsertRowid)
+}
+
+export function updateAccount(id: number, data: { name: string; account_type: string; ownership_share: number }) {
+  getDb().prepare(`UPDATE accounts SET name = ?, account_type = ?, ownership_share = ? WHERE id = ?`)
+    .run(data.name, data.account_type, data.ownership_share, id)
+  return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(id)
+}
+
 // ── Import ────────────────────────────────────────────────────────────────────
 
 export interface ImportData {
@@ -178,9 +192,66 @@ export function updateTransaction(id: number, updates: { category_id?: number; n
     fields.push('ownership_share = @ownership_share')
     params.ownership_share = updates.ownership_share
   }
+  if ('is_transfer' in updates) {
+    fields.push('is_transfer = @is_transfer')
+    params.is_transfer = updates.is_transfer
+  }
   if (fields.length === 0) return
 
   db.prepare(`UPDATE transactions SET ${fields.join(', ')} WHERE id = @id`).run(params)
+}
+
+// ── Transfer detection ─────────────────────────────────────────────────────────
+
+export interface TransferCandidate {
+  out_id: number
+  out_date: string
+  out_desc: string
+  out_amount: number
+  out_account: string
+  out_account_type: string
+  in_id: number
+  in_date: string
+  in_desc: string
+  in_amount: number
+  in_account: string
+  in_account_type: string
+}
+
+export function detectTransfers(windowDays = 5): TransferCandidate[] {
+  return getDb().prepare(`
+    SELECT
+      t1.id AS out_id, t1.date AS out_date, t1.description AS out_desc,
+      ROUND(t1.amount, 2) AS out_amount,
+      a1.name AS out_account, a1.account_type AS out_account_type,
+      t2.id AS in_id, t2.date AS in_date, t2.description AS in_desc,
+      ROUND(t2.amount, 2) AS in_amount,
+      a2.name AS in_account, a2.account_type AS in_account_type
+    FROM transactions t1
+    JOIN accounts a1 ON t1.account_id = a1.id
+    JOIN transactions t2 ON t2.account_id != t1.account_id
+    JOIN accounts a2 ON t2.account_id = a2.id
+    WHERE t1.is_transfer = 0
+      AND t2.is_transfer = 0
+      AND t1.amount > 0
+      AND t2.amount < 0
+      AND ABS(t1.amount + t2.amount) < 0.02
+      AND ABS(JULIANDAY(t1.date) - JULIANDAY(t2.date)) <= @windowDays
+    ORDER BY t1.date DESC
+    LIMIT 300
+  `).all({ windowDays }) as TransferCandidate[]
+}
+
+export function applyTransfers(txIds: number[]): void {
+  const db = getDb()
+  const update = db.prepare('UPDATE transactions SET is_transfer = 1 WHERE id = ?')
+  db.transaction(() => {
+    for (const id of txIds) update.run(id)
+  })()
+}
+
+export function toggleTransfer(id: number): void {
+  getDb().prepare(`UPDATE transactions SET is_transfer = CASE WHEN is_transfer = 1 THEN 0 ELSE 1 END WHERE id = ?`).run(id)
 }
 
 // ── Categories ────────────────────────────────────────────────────────────────
@@ -266,7 +337,7 @@ export function getDashboardData(month: string) {
   // month = 'YYYY-MM'
   const monthStart = `${month}-01`
 
-  // Category actuals
+  // Category actuals (excluding transfers)
   const categoryActuals = db.prepare(`
     SELECT
       c.id   AS category_id,
@@ -274,7 +345,7 @@ export function getDashboardData(month: string) {
       c.colour,
       c.is_fixed,
       c.sort_order,
-      COALESCE(ROUND(SUM(CASE WHEN t.amount > 0 THEN t.amount * a.ownership_share ELSE 0 END), 2), 0) AS actual,
+      COALESCE(ROUND(SUM(CASE WHEN t.amount > 0 AND (t.is_transfer = 0 OR t.is_transfer IS NULL) THEN t.amount * a.ownership_share ELSE 0 END), 2), 0) AS actual,
       COALESCE(b.monthly_amount, 0) AS budget
     FROM categories c
     LEFT JOIN transactions t
@@ -292,7 +363,7 @@ export function getDashboardData(month: string) {
     is_fixed: number; sort_order: number; actual: number; budget: number
   }>
 
-  // Daily spending (for chart)
+  // Daily spending (for chart, excluding transfers)
   const daily = db.prepare(`
     SELECT
       t.date,
@@ -301,6 +372,7 @@ export function getDashboardData(month: string) {
     JOIN accounts a ON t.account_id = a.id
     WHERE strftime('%Y-%m', t.date) = @month
       AND t.amount > 0
+      AND (t.is_transfer = 0 OR t.is_transfer IS NULL)
     GROUP BY t.date
     ORDER BY t.date
   `).all({ month }) as Array<{ date: string; daily_amount: number }>
@@ -324,14 +396,26 @@ export function getDashboardData(month: string) {
     }
   })
 
-  // Total income
+  // Total income (excluding transfers)
   const { total_income } = db.prepare(`
     SELECT COALESCE(ROUND(SUM(ABS(t.amount) * a.ownership_share), 2), 0) AS total_income
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
     WHERE strftime('%Y-%m', t.date) = @month
       AND t.amount < 0
+      AND (t.is_transfer = 0 OR t.is_transfer IS NULL)
   `).get({ month }) as { total_income: number }
+
+  // Savings deposited this month (transfers going INTO savings accounts)
+  const { savings_deposited } = db.prepare(`
+    SELECT COALESCE(ROUND(SUM(ABS(t.amount) * COALESCE(t.ownership_share, a.ownership_share)), 2), 0) AS savings_deposited
+    FROM transactions t
+    JOIN accounts a ON t.account_id = a.id
+    WHERE strftime('%Y-%m', t.date) = @month
+      AND t.amount < 0
+      AND t.is_transfer = 1
+      AND a.account_type = 'savings'
+  `).get({ month }) as { savings_deposited: number }
 
   // Total spent (variable only)
   const totalSpent = categoryActuals
@@ -381,6 +465,7 @@ export function getDashboardData(month: string) {
     budgetTotal: categoryActuals.reduce((s, c) => s + c.budget, 0),
     daysInMonth,
     uncategorisedCount,
+    savingsDeposited: savings_deposited,
   }
 }
 

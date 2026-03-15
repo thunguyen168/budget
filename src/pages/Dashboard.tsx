@@ -5,7 +5,7 @@ import {
   AreaChart, Area, CartesianGrid, Legend,
   PieChart, Pie,
 } from 'recharts'
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, Calendar, Check, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, Calendar, Check, Clock, PiggyBank } from 'lucide-react'
 import { AlertBanner } from '../components/AlertBanner'
 import type { DashboardData, Alert } from '../types'
 
@@ -149,14 +149,14 @@ export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransa
           value={fmt(data.totalIncome)}
           Icon={TrendingUp}
           iconClass="text-green-500"
-          sub="this month"
+          sub="excl. transfers"
         />
         <SummaryCard
           label="Total spent"
           value={fmt(data.totalSpent)}
           Icon={TrendingDown}
           iconClass="text-red-500"
-          sub="variable spending"
+          sub="variable, excl. transfers"
         />
         <SummaryCard
           label="Budget remaining"
@@ -166,7 +166,15 @@ export function DashboardPage({ onNavigateToTransactions }: { onNavigateToTransa
           sub={`of ${fmt(totalBudget)}`}
           warn={remaining < 0}
         />
-        {isCurrentMonth ? (
+        {data.savingsDeposited > 0 ? (
+          <SummaryCard
+            label="Saved this month"
+            value={fmt(data.savingsDeposited)}
+            Icon={PiggyBank}
+            iconClass="text-emerald-500"
+            sub="into savings accounts"
+          />
+        ) : isCurrentMonth ? (
           <SummaryCard
             label="Days left"
             value={String(daysLeft)}

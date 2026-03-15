@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
-import { Search, SlidersHorizontal, X, ChevronUp, ChevronDown, Edit2, Check } from 'lucide-react'
+import { Search, SlidersHorizontal, X, ChevronUp, ChevronDown, Edit2, Check, ArrowRightLeft } from 'lucide-react'
 import type { Transaction, Category, Account, TransactionFilters } from '../types'
 
 const BANK_COLOURS: Record<string, string> = {
@@ -38,6 +38,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
   const [editCategoryId, setEditCategoryId] = useState<string>('')
   const [editNotes, setEditNotes] = useState<string>('')
   const [editSplit, setEditSplit] = useState<number | null>(null) // null = use account default
+  const [editIsTransfer, setEditIsTransfer] = useState<boolean>(false)
 
   useEffect(() => {
     Promise.all([window.electronAPI.getCategories(), window.electronAPI.getAccounts()]).then(
@@ -75,13 +76,15 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
     // Only set an override if tx has an explicit non-account value
     // We compare rounded to avoid float weirdness
     setEditSplit(Math.round(txShare * 100) !== Math.round(acctShare * 100) ? txShare : null)
+    setEditIsTransfer(t.is_transfer === 1)
   }
 
-  const saveEdit = async (id: number, acctShare: number) => {
+  const saveEdit = async (id: number) => {
     await window.electronAPI.updateTransaction(id, {
       category_id: editCategoryId ? Number(editCategoryId) : undefined,
       notes: editNotes,
       ownership_share: editSplit,
+      is_transfer: editIsTransfer ? 1 : 0,
     })
     setEditingId(null)
     fetchTransactions()
@@ -234,9 +237,16 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                     <td className="px-4 py-2.5">
                       <div className="text-gray-900 max-w-xs truncate">{t.description}</div>
                       {t.notes && <div className="text-xs text-gray-400 mt-0.5 truncate">{t.notes}</div>}
-                      {t.is_manually_categorised ? (
-                        <span className="text-xs text-indigo-400">manually categorised</span>
-                      ) : null}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {t.is_transfer === 1 && (
+                          <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                            <ArrowRightLeft size={10} /> transfer
+                          </span>
+                        )}
+                        {t.is_manually_categorised ? (
+                          <span className="text-xs text-indigo-400">manually categorised</span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -272,6 +282,17 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                             value={editSplit}
                             onChange={setEditSplit}
                           />
+                          {/* Transfer toggle */}
+                          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600 select-none">
+                            <input
+                              type="checkbox"
+                              checked={editIsTransfer}
+                              onChange={(e) => setEditIsTransfer(e.target.checked)}
+                              className="rounded"
+                            />
+                            <ArrowRightLeft size={11} />
+                            Mark as transfer (exclude from budget)
+                          </label>
                         </div>
                       ) : (
                         <span
@@ -298,7 +319,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                       {editingId === t.id ? (
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => saveEdit(t.id, acctShare)}
+                            onClick={() => saveEdit(t.id)}
                             className="p-1 text-green-600 hover:bg-green-50 rounded"
                           >
                             <Check size={14} />

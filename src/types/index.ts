@@ -2,8 +2,24 @@ export interface Account {
   id: number
   name: string
   bank_type: 'monzo' | 'amex' | 'nationwide'
+  account_type: 'spending' | 'savings' | 'credit'
   ownership_share: number
   created_at: string
+}
+
+export interface TransferCandidate {
+  out_id: number
+  out_date: string
+  out_desc: string
+  out_amount: number
+  out_account: string
+  out_account_type: string
+  in_id: number
+  in_date: string
+  in_desc: string
+  in_amount: number
+  in_account: string
+  in_account_type: string
 }
 
 export interface Category {
@@ -37,6 +53,7 @@ export interface Transaction {
   category_id: number | null
   is_manually_categorised: number
   notes: string | null
+  is_transfer: number
   created_at: string
   // joined
   category_name?: string
@@ -133,6 +150,7 @@ export interface DashboardData {
   budgetTotal: number
   daysInMonth: number
   uncategorisedCount: number
+  savingsDeposited: number
 }
 
 export interface Alert {
@@ -147,6 +165,11 @@ declare global {
       openFileDialog(): Promise<string[]>
       parseCSVFile(filePath: string): Promise<ParseResult>
       getAccounts(): Promise<Account[]>
+      addAccount(data: { name: string; bank_type: string; account_type: string; ownership_share: number }): Promise<Account>
+      updateAccount(id: number, data: { name: string; account_type: string; ownership_share: number }): Promise<Account>
+      detectTransfers(windowDays: number): Promise<TransferCandidate[]>
+      applyTransfers(txIds: number[]): Promise<void>
+      toggleTransfer(id: number): Promise<void>
       importTransactions(data: { accountId: number; filename: string; transactions: ParsedTransaction[] }): Promise<ImportResult>
       getImportHistory(): Promise<ImportRecord[]>
       getTransactions(filters?: TransactionFilters): Promise<Transaction[]>

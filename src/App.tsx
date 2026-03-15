@@ -4,6 +4,7 @@ import { DashboardPage } from './pages/Dashboard'
 import { ImportPage } from './pages/Import'
 import { TransactionsPage } from './pages/Transactions'
 import { BudgetPage } from './pages/Budget'
+import { AccountsPage } from './pages/Accounts'
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
@@ -26,6 +27,7 @@ export default function App() {
           <TransactionsPage initialCategoryId={transactionCategoryFilter} />
         )}
         {page === 'budget' && <BudgetPage />}
+        {page === 'accounts' && <AccountsPage />}
       </main>
     </div>
   )
