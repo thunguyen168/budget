@@ -24,6 +24,8 @@ const api = {
     getCategories: () => electron_1.ipcRenderer.invoke('db:getCategories'),
     addCategory: (data) => electron_1.ipcRenderer.invoke('db:addCategory', data),
     updateCategory: (id, data) => electron_1.ipcRenderer.invoke('db:updateCategory', id, data),
+    deleteCategory: (id) => electron_1.ipcRenderer.invoke('db:deleteCategory', id),
+    getSavingsHistory: () => electron_1.ipcRenderer.invoke('db:getSavingsHistory'),
     // Budgets
     getBudgets: (forDate) => electron_1.ipcRenderer.invoke('db:getBudgets', forDate),
     updateBudget: (id, amount) => electron_1.ipcRenderer.invoke('db:updateBudget', id, amount),
