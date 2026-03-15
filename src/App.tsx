@@ -5,6 +5,7 @@ import { ImportPage } from './pages/Import'
 import { TransactionsPage } from './pages/Transactions'
 import { BudgetPage } from './pages/Budget'
 import { AccountsPage } from './pages/Accounts'
+import { SavingsPage } from './pages/Savings'
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
@@ -18,7 +19,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar current={page} onChange={(p) => setPage(p)} />
-      <main className="flex-1 overflow-auto min-w-0">
+      <main className="flex-1 overflow-auto min-w-0 w-0">
         {page === 'dashboard' && (
           <DashboardPage onNavigateToTransactions={navigateToTransactions} />
         )}
@@ -27,6 +28,7 @@ export default function App() {
           <TransactionsPage initialCategoryId={transactionCategoryFilter} />
         )}
         {page === 'budget' && <BudgetPage />}
+        {page === 'savings' && <SavingsPage />}
         {page === 'accounts' && <AccountsPage />}
       </main>
     </div>

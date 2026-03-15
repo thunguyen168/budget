@@ -178,6 +178,8 @@ declare global {
       getCategories(): Promise<Category[]>
       addCategory(data: { name: string; colour: string; is_fixed: boolean }): Promise<Category>
       updateCategory(id: number, data: { name: string; colour: string; is_fixed: boolean }): Promise<Category>
+      deleteCategory(id: number): Promise<void>
+      getSavingsHistory(): Promise<Array<{ month: string; amount: number }>>
       getBudgets(forDate?: string): Promise<Budget[]>
       updateBudget(id: number, amount: number): Promise<void>
       getCategorisationRules(): Promise<CategorisationRule[]>

@@ -91,6 +91,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('db:updateCategory', (_e, id: number, data) => Q.updateCategory(id, data))
 
+  ipcMain.handle('db:deleteCategory', (_e, id: number) => Q.deleteCategory(id))
+
+  ipcMain.handle('db:getSavingsHistory', () => Q.getSavingsHistory())
+
   ipcMain.handle('db:getBudgets', (_e, forDate?: string) => Q.getBudgets(forDate))
 
   ipcMain.handle('db:updateBudget', (_e, id: number, amount: number) => Q.updateBudget(id, amount))
