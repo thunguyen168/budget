@@ -194,7 +194,7 @@ export function updateTransaction(id: number, updates: { category_id?: number; n
   }
   if ('is_transfer' in updates) {
     fields.push('is_transfer = @is_transfer')
-    params.is_transfer = updates.is_transfer
+    params.is_transfer = (updates as Record<string, unknown>).is_transfer
   }
   if (fields.length === 0) return
 
@@ -334,7 +334,6 @@ export function getImportHistory() {
 
 export function getDashboardData(month: string) {
   const db = getDb()
-  // month = 'YYYY-MM'
   const monthStart = `${month}-01`
 
   // Category actuals (excluding transfers)
@@ -363,8 +362,8 @@ export function getDashboardData(month: string) {
     is_fixed: number; sort_order: number; actual: number; budget: number
   }>
 
-  // Daily spending (for chart, excluding transfers)
-  const daily = db.prepare(`
+  // Raw daily spending from DB (only days that have transactions)
+  const rawDaily = db.prepare(`
     SELECT
       t.date,
       ROUND(SUM(t.amount * a.ownership_share), 2) AS daily_amount
@@ -377,24 +376,36 @@ export function getDashboardData(month: string) {
     ORDER BY t.date
   `).all({ month }) as Array<{ date: string; daily_amount: number }>
 
-  // Build cumulative with pace
+  // Variable budget total
   const variableBudget = categoryActuals
     .filter((c) => !c.is_fixed)
     .reduce((s, c) => s + c.budget, 0)
 
+  // ── KEY FIX: Fill every day so the pace line never disappears ─────────────
   const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
 
+  const today          = new Date()
+  const isCurrentMonth = today.getFullYear() === y && (today.getMonth() + 1) === m
+  // For the current month only go up to today; for past months fill the whole month
+  const lastDay        = isCurrentMonth ? today.getDate() : daysInMonth
+
+  const dailyMap = new Map(rawDaily.map((d) => [d.date, d.daily_amount]))
+
   let cumulative = 0
-  const dailySpending = daily.map((d) => {
-    cumulative = Math.round((cumulative + d.daily_amount) * 100) / 100
-    const dayNum = parseInt(d.date.slice(8), 10)
-    return {
-      date: d.date,
+  const dailySpending: Array<{ date: string; cumulative: number; pace: number }> = []
+
+  for (let day = 1; day <= lastDay; day++) {
+    const dateStr  = `${month}-${String(day).padStart(2, '0')}`
+    const dayAmt   = dailyMap.get(dateStr) ?? 0
+    cumulative     = Math.round((cumulative + dayAmt) * 100) / 100
+    dailySpending.push({
+      date:       dateStr,
       cumulative,
-      pace: Math.round((variableBudget / daysInMonth) * dayNum * 100) / 100,
-    }
-  })
+      pace:       Math.round((variableBudget / daysInMonth) * day * 100) / 100,
+    })
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Total income (excluding transfers)
   const { total_income } = db.prepare(`
@@ -406,7 +417,7 @@ export function getDashboardData(month: string) {
       AND (t.is_transfer = 0 OR t.is_transfer IS NULL)
   `).get({ month }) as { total_income: number }
 
-  // Savings deposited this month (transfers going INTO savings accounts)
+  // Savings deposited this month
   const { savings_deposited } = db.prepare(`
     SELECT COALESCE(ROUND(SUM(ABS(t.amount) * COALESCE(t.ownership_share, a.ownership_share)), 2), 0) AS savings_deposited
     FROM transactions t
@@ -422,7 +433,7 @@ export function getDashboardData(month: string) {
     .filter((c) => !c.is_fixed)
     .reduce((s, c) => s + c.actual, 0)
 
-  // Fixed costs status (has a transaction appeared this month?)
+  // Fixed costs status
   const fixedCosts = db.prepare(`
     SELECT
       c.id   AS category_id,
@@ -444,7 +455,7 @@ export function getDashboardData(month: string) {
     ORDER BY c.sort_order
   `).all({ month, monthStart })
 
-  // Count uncategorised transactions (Other / misc) this month
+  // Uncategorised count
   const otherCat = db.prepare(`SELECT id FROM categories WHERE name = 'Other / misc'`).get() as { id: number } | undefined
   let uncategorisedCount = 0
   if (otherCat) {
@@ -459,10 +470,10 @@ export function getDashboardData(month: string) {
     categoryActuals,
     dailySpending,
     fixedCosts,
-    totalIncome: total_income,
-    totalSpent: Math.round(totalSpent * 100) / 100,
+    totalIncome:      total_income,
+    totalSpent:       Math.round(totalSpent * 100) / 100,
     variableBudget,
-    budgetTotal: categoryActuals.reduce((s, c) => s + c.budget, 0),
+    budgetTotal:      categoryActuals.reduce((s, c) => s + c.budget, 0),
     daysInMonth,
     uncategorisedCount,
     savingsDeposited: savings_deposited,
