@@ -279,6 +279,35 @@ export function addCategory(data: { name: string; colour: string; is_fixed: bool
   return db.prepare('SELECT * FROM categories WHERE id = ?').get(r.lastInsertRowid)
 }
 
+export function deleteCategory(id: number) {
+  const db = getDb()
+  db.transaction(() => {
+    // Unassign any transactions using this category
+    db.prepare('UPDATE transactions SET category_id = NULL, is_manually_categorised = 0 WHERE category_id = ?').run(id)
+    // Remove budget entries for this category
+    db.prepare('DELETE FROM budgets WHERE category_id = ?').run(id)
+    // Remove categorisation rules for this category
+    db.prepare('DELETE FROM categorisation_rules WHERE category_id = ?').run(id)
+    // Delete the category
+    db.prepare('DELETE FROM categories WHERE id = ?').run(id)
+  })()
+}
+
+export function getSavingsHistory() {
+  return getDb().prepare(`
+    SELECT
+      strftime('%Y-%m', t.date) AS month,
+      ROUND(SUM(ABS(t.amount) * COALESCE(t.ownership_share, a.ownership_share)), 2) AS amount
+    FROM transactions t
+    JOIN accounts a ON t.account_id = a.id
+    WHERE t.amount < 0
+      AND t.is_transfer = 1
+      AND a.account_type = 'savings'
+    GROUP BY strftime('%Y-%m', t.date)
+    ORDER BY month ASC
+  `).all() as Array<{ month: string; amount: number }>
+}
+
 // ── Budgets ───────────────────────────────────────────────────────────────────
 
 export function getBudgets(forDate?: string) {

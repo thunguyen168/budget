@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Edit2, Check, X, Plus, Trash2, TrendingUp, TrendingDown, Pencil } from 'lucide-react'
+import { Edit2, Check, X, Plus, Trash2, TrendingUp, TrendingDown, Pencil, Tag } from 'lucide-react'
 import type { Budget, Category, CategorisationRule, CategoryActual } from '../types'
 
-type Tab = 'budgets' | 'rules'
+type Tab = 'budgets' | 'categories' | 'rules'
 
 const SALARY = 2213
 
@@ -38,13 +38,16 @@ export function BudgetPage() {
   const [editCatName, setEditCatName]     = useState<string>('')
   const [editCatColour, setEditCatColour] = useState<string>('#6366f1')
   const [editCatFixed, setEditCatFixed]   = useState<boolean>(false)
+  const [catError, setCatError]           = useState<string | null>(null)
+
+  // Delete category
+  const [deletingCatId, setDeletingCatId] = useState<number | null>(null)
 
   // New category
-  const [showAddCat, setShowAddCat]   = useState(false)
-  const [newCatName, setNewCatName]   = useState('')
+  const [showAddCat, setShowAddCat]     = useState(false)
+  const [newCatName, setNewCatName]     = useState('')
   const [newCatColour, setNewCatColour] = useState('#6366f1')
-  const [newCatFixed, setNewCatFixed] = useState(false)
-  const [catError, setCatError]       = useState<string | null>(null)
+  const [newCatFixed, setNewCatFixed]   = useState(false)
 
   // New rule
   const [showAddRule, setShowAddRule]         = useState(false)
@@ -95,6 +98,7 @@ export function BudgetPage() {
     setEditCatName(cat.name)
     setEditCatColour(cat.colour)
     setEditCatFixed(cat.is_fixed === 1)
+    setCatError(null)
   }
 
   const saveEditCat = async (id: number) => {
@@ -124,10 +128,24 @@ export function BudgetPage() {
       const cat = await window.electronAPI.addCategory({
         name: newCatName.trim(), colour: newCatColour, is_fixed: newCatFixed,
       })
-      if (cat) { setCategories((prev) => [...prev, cat]); setShowAddCat(false); setNewCatName('') }
+      if (cat) {
+        setCategories((prev) => [...prev, cat])
+        setShowAddCat(false)
+        setNewCatName('')
+        setNewCatColour('#6366f1')
+        setNewCatFixed(false)
+      }
     } catch (err) {
       setCatError(err instanceof Error ? err.message : 'Failed to add category')
     }
+  }
+
+  const confirmDeleteCat = async (id: number) => {
+    await window.electronAPI.deleteCategory(id)
+    setCategories((prev) => prev.filter((c) => c.id !== id))
+    setBudgets((prev) => prev.filter((b) => b.category_id !== id))
+    setRules((prev) => prev.filter((r) => r.category_id !== id))
+    setDeletingCatId(null)
   }
 
   // ── Rule actions ───────────────────────────────────────────────────────────
@@ -180,7 +198,6 @@ export function BudgetPage() {
   const totalBudget  = budgets.reduce((s, b) => s + b.monthly_amount, 0)
   const headroom     = SALARY - totalBudget
 
-  // Over-budget count for the current month
   const overCount = varBudgets.filter((b) => (actuals.get(b.category_id) ?? 0) > b.monthly_amount).length
 
   return (
@@ -215,7 +232,7 @@ export function BudgetPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit mb-6">
-        {(['budgets', 'rules'] as Tab[]).map((t) => (
+        {(['budgets', 'categories', 'rules'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -223,7 +240,7 @@ export function BudgetPage() {
               tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'budgets' ? 'Budget targets' : 'Categorisation rules'}
+            {t === 'budgets' ? 'Budget targets' : t === 'categories' ? 'Categories' : 'Categorisation rules'}
           </button>
         ))}
       </div>
@@ -279,11 +296,20 @@ export function BudgetPage() {
             onEditCatFixed={setEditCatFixed}
             catError={catError}
           />
+        </div>
+      )}
 
-          {/* Add category */}
+      {/* ── Categories tab ──────────────────────────────────────────────────── */}
+      {tab === 'categories' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Manage your spending categories. Deleting a category will unassign transactions from it.
+          </p>
+
+          {/* Add category form */}
           {showAddCat ? (
             <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
-              <p className="text-sm font-semibold text-gray-900">Add new category</p>
+              <p className="text-sm font-semibold text-gray-900">New category</p>
               {catError && (
                 <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{catError}</p>
               )}
@@ -332,6 +358,125 @@ export function BudgetPage() {
               <Plus size={14} /> Add category
             </button>
           )}
+
+          {/* Categories table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left">Name</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((cat) => (
+                  editingCatId === cat.id ? (
+                    <tr key={cat.id} className="border-t border-gray-100 bg-indigo-50/40">
+                      <td className="px-4 py-2" colSpan={2}>
+                        {catError && (
+                          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">{catError}</p>
+                        )}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <input
+                            type="text" value={editCatName} onChange={(e) => setEditCatName(e.target.value)}
+                            className="text-sm border border-indigo-300 rounded-lg px-2 py-1 w-44 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            autoFocus
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveEditCat(cat.id); if (e.key === 'Escape') { setEditingCatId(null); setCatError(null) } }}
+                          />
+                          <input
+                            type="color" value={editCatColour} onChange={(e) => setEditCatColour(e.target.value)}
+                            className="w-8 h-8 border border-gray-300 rounded cursor-pointer p-0.5" title="Category colour"
+                          />
+                          <select
+                            value={editCatFixed ? 'fixed' : 'variable'}
+                            onChange={(e) => setEditCatFixed(e.target.value === 'fixed')}
+                            className="text-xs border border-gray-300 rounded-lg px-2 py-1"
+                          >
+                            <option value="variable">Variable</option>
+                            <option value="fixed">Fixed</option>
+                          </select>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => saveEditCat(cat.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                            <Check size={13} />
+                          </button>
+                          <button onClick={() => { setEditingCatId(null); setCatError(null) }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : deletingCatId === cat.id ? (
+                    <tr key={cat.id} className="border-t border-gray-100 bg-red-50/40">
+                      <td className="px-4 py-2.5" colSpan={2}>
+                        <span className="text-sm text-red-700">
+                          Delete <strong>{cat.name}</strong>? Transactions will be unassigned.
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => confirmDeleteCat(cat.id)}
+                            className="text-xs bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => setDeletingCatId(null)}
+                            className="text-xs text-gray-500 px-3 py-1 hover:text-gray-700"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={cat.id} className="border-t border-gray-100 hover:bg-gray-50 group">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: cat.colour }} />
+                          <span className="font-medium text-gray-900">{cat.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          cat.is_fixed ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {cat.is_fixed ? 'Fixed' : 'Variable'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => startEditCat(cat)}
+                            className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                            title="Edit"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingCatId(cat.id)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                            title="Delete"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                ))}
+                {categories.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-6 text-center text-gray-400">No categories</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -446,7 +591,12 @@ export function BudgetPage() {
                   ) : (
                     <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 group">
                       <td className="px-4 py-2.5 font-mono text-gray-800 text-xs">{r.keyword}</td>
-                      <td className="px-4 py-2.5 text-gray-700">{r.category_name}</td>
+                      <td className="px-4 py-2.5 text-gray-700">
+                        <div className="flex items-center gap-1.5">
+                          <Tag size={11} className="text-gray-400" />
+                          {r.category_name}
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-right text-gray-500">{r.priority}</td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
