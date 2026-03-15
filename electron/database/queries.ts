@@ -261,12 +261,17 @@ export function getCategories() {
 }
 
 export function updateCategory(id: number, data: { name: string; colour: string; is_fixed: boolean }) {
-  getDb().prepare(`UPDATE categories SET name = ?, colour = ?, is_fixed = ? WHERE id = ?`).run(data.name, data.colour, data.is_fixed ? 1 : 0, id)
-  return getDb().prepare('SELECT * FROM categories WHERE id = ?').get(id)
+  const db = getDb()
+  const existing = db.prepare(`SELECT id FROM categories WHERE name = ? AND id != ?`).get(data.name, id)
+  if (existing) throw new Error(`A category named "${data.name}" already exists.`)
+  db.prepare(`UPDATE categories SET name = ?, colour = ?, is_fixed = ? WHERE id = ?`).run(data.name, data.colour, data.is_fixed ? 1 : 0, id)
+  return db.prepare('SELECT * FROM categories WHERE id = ?').get(id)
 }
 
 export function addCategory(data: { name: string; colour: string; is_fixed: boolean }) {
   const db = getDb()
+  const existing = db.prepare(`SELECT id FROM categories WHERE name = ?`).get(data.name)
+  if (existing) throw new Error(`A category named "${data.name}" already exists.`)
   const maxOrder = (db.prepare('SELECT MAX(sort_order) as m FROM categories').get() as { m: number | null }).m ?? 0
   const r = db.prepare(`
     INSERT INTO categories (name, colour, is_fixed, sort_order) VALUES (?,?,?,?)

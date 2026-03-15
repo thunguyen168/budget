@@ -44,6 +44,7 @@ export function BudgetPage() {
   const [newCatName, setNewCatName]   = useState('')
   const [newCatColour, setNewCatColour] = useState('#6366f1')
   const [newCatFixed, setNewCatFixed] = useState(false)
+  const [catError, setCatError]       = useState<string | null>(null)
 
   // New rule
   const [showAddRule, setShowAddRule]         = useState(false)
@@ -98,25 +99,35 @@ export function BudgetPage() {
 
   const saveEditCat = async (id: number) => {
     if (!editCatName.trim()) return
-    const updated = await window.electronAPI.updateCategory(id, {
-      name: editCatName.trim(), colour: editCatColour, is_fixed: editCatFixed,
-    })
-    if (updated) {
-      setCategories((prev) => prev.map((c) => c.id === id ? updated : c))
-      setBudgets((prev) => prev.map((b) => b.category_id === id
-        ? { ...b, category_name: updated.name, colour: updated.colour, is_fixed: updated.is_fixed }
-        : b
-      ))
+    setCatError(null)
+    try {
+      const updated = await window.electronAPI.updateCategory(id, {
+        name: editCatName.trim(), colour: editCatColour, is_fixed: editCatFixed,
+      })
+      if (updated) {
+        setCategories((prev) => prev.map((c) => c.id === id ? updated : c))
+        setBudgets((prev) => prev.map((b) => b.category_id === id
+          ? { ...b, category_name: updated.name, colour: updated.colour, is_fixed: updated.is_fixed }
+          : b
+        ))
+      }
+      setEditingCatId(null)
+    } catch (err) {
+      setCatError(err instanceof Error ? err.message : 'Failed to update category')
     }
-    setEditingCatId(null)
   }
 
   const addCategory = async () => {
     if (!newCatName.trim()) return
-    const cat = await window.electronAPI.addCategory({
-      name: newCatName.trim(), colour: newCatColour, is_fixed: newCatFixed,
-    })
-    if (cat) { setCategories((prev) => [...prev, cat]); setShowAddCat(false); setNewCatName('') }
+    setCatError(null)
+    try {
+      const cat = await window.electronAPI.addCategory({
+        name: newCatName.trim(), colour: newCatColour, is_fixed: newCatFixed,
+      })
+      if (cat) { setCategories((prev) => [...prev, cat]); setShowAddCat(false); setNewCatName('') }
+    } catch (err) {
+      setCatError(err instanceof Error ? err.message : 'Failed to add category')
+    }
   }
 
   // ── Rule actions ───────────────────────────────────────────────────────────
@@ -238,10 +249,11 @@ export function BudgetPage() {
             onEditAmountChange={setEditAmount}
             onEditCat={startEditCat}
             onSaveCat={saveEditCat}
-            onCancelCat={() => setEditingCatId(null)}
+            onCancelCat={() => { setEditingCatId(null); setCatError(null) }}
             onEditCatName={setEditCatName}
             onEditCatColour={setEditCatColour}
             onEditCatFixed={setEditCatFixed}
+            catError={catError}
           />
           <BudgetSection
             title="Variable costs"
@@ -261,16 +273,20 @@ export function BudgetPage() {
             onEditAmountChange={setEditAmount}
             onEditCat={startEditCat}
             onSaveCat={saveEditCat}
-            onCancelCat={() => setEditingCatId(null)}
+            onCancelCat={() => { setEditingCatId(null); setCatError(null) }}
             onEditCatName={setEditCatName}
             onEditCatColour={setEditCatColour}
             onEditCatFixed={setEditCatFixed}
+            catError={catError}
           />
 
           {/* Add category */}
           {showAddCat ? (
             <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
               <p className="text-sm font-semibold text-gray-900">Add new category</p>
+              {catError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{catError}</p>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Name</label>
@@ -303,7 +319,7 @@ export function BudgetPage() {
                 <button onClick={addCategory} className="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-indigo-700">
                   Add category
                 </button>
-                <button onClick={() => setShowAddCat(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">
+                <button onClick={() => { setShowAddCat(false); setCatError(null) }} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">
                   Cancel
                 </button>
               </div>
@@ -472,6 +488,7 @@ function BudgetSection({
   editingCatId, editCatName, editCatColour, editCatFixed,
   onEditBudget, onSaveBudget, onCancelBudget, onEditAmountChange,
   onEditCat, onSaveCat, onCancelCat, onEditCatName, onEditCatColour, onEditCatFixed,
+  catError,
 }: {
   title: string
   subtitle: string
@@ -494,6 +511,7 @@ function BudgetSection({
   onEditCatName: (v: string) => void
   onEditCatColour: (v: string) => void
   onEditCatFixed: (v: boolean) => void
+  catError?: string | null
 }) {
   const total   = budgets.reduce((s, b) => s + b.monthly_amount, 0)
   const catById = new Map(categories.map((c) => [c.id, c]))
@@ -539,7 +557,11 @@ function BudgetSection({
                 {/* Left: category name + progress bar */}
                 <div className="flex-1 min-w-0">
                   {isEditingCat ? (
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <div className="flex flex-col gap-1 mb-2">
+                    {catError && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">{catError}</p>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
                       <input
                         type="text" value={editCatName} onChange={(e) => onEditCatName(e.target.value)}
                         className="text-sm border border-indigo-300 rounded-lg px-2 py-1 w-36 focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -564,6 +586,7 @@ function BudgetSection({
                       <button onClick={onCancelCat} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
                         <X size={14} />
                       </button>
+                    </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 mb-2">

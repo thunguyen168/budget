@@ -124,6 +124,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
   const [editCatColour, setEditCatColour] = useState<string>('')
   const [editCatIsFixed, setEditCatIsFixed] = useState<number>(0)
   const [catSaving, setCatSaving]         = useState(false)
+  const [catError, setCatError]           = useState<string | null>(null)
 
   // ── Bulk selection ───────────────────────────────────────────────────────
   const [selected, setSelected]           = useState<Set<number>>(new Set())
@@ -208,16 +209,22 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
   const saveCategoryEdit = async () => {
     if (editingCatId == null) return
     setCatSaving(true)
-    await window.electronAPI.updateCategory(editingCatId, {
-      name: editCatName,
-      colour: editCatColour,
-      is_fixed: Boolean(editCatIsFixed),
-    })
-    const cats = await window.electronAPI.getCategories()
-    setCategories(cats)
-    setCatSaving(false)
-    setEditingCatId(null)
-    fetchTransactions()
+    setCatError(null)
+    try {
+      await window.electronAPI.updateCategory(editingCatId, {
+        name: editCatName,
+        colour: editCatColour,
+        is_fixed: Boolean(editCatIsFixed),
+      })
+      const cats = await window.electronAPI.getCategories()
+      setCategories(cats)
+      setEditingCatId(null)
+      fetchTransactions()
+    } catch (err) {
+      setCatError(err instanceof Error ? err.message : 'Failed to update category')
+    } finally {
+      setCatSaving(false)
+    }
   }
 
   // ── Bulk helpers ──────────────────────────────────────────────────────────
@@ -818,11 +825,14 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                         >
                           {isEditing ? (
                             <div className="px-3 py-2.5 space-y-2">
+                              {catError && (
+                                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">{catError}</p>
+                              )}
                               <input
                                 type="text"
                                 value={editCatName}
                                 onChange={(e) => setEditCatName(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') saveCategoryEdit(); if (e.key === 'Escape') setEditingCatId(null) }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveCategoryEdit(); if (e.key === 'Escape') { setEditingCatId(null); setCatError(null) } }}
                                 autoFocus
                                 className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
                               />
@@ -852,7 +862,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                                   {catSaving ? 'Saving…' : 'Save'}
                                 </button>
                                 <button
-                                  onClick={() => setEditingCatId(null)}
+                                  onClick={() => { setEditingCatId(null); setCatError(null) }}
                                   className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                                 >
                                   Cancel
@@ -914,11 +924,14 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                         >
                           {isEditing ? (
                             <div className="px-3 py-2.5 space-y-2">
+                              {catError && (
+                                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">{catError}</p>
+                              )}
                               <input
                                 type="text"
                                 value={editCatName}
                                 onChange={(e) => setEditCatName(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') saveCategoryEdit(); if (e.key === 'Escape') setEditingCatId(null) }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveCategoryEdit(); if (e.key === 'Escape') { setEditingCatId(null); setCatError(null) } }}
                                 autoFocus
                                 className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
                               />
@@ -948,7 +961,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                                   {catSaving ? 'Saving…' : 'Save'}
                                 </button>
                                 <button
-                                  onClick={() => setEditingCatId(null)}
+                                  onClick={() => { setEditingCatId(null); setCatError(null) }}
                                   className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                                 >
                                   Cancel
