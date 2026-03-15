@@ -110,13 +110,20 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
   const [sortBy, setSortBy]   = useState<'date' | 'amount' | 'description'>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  // ── Side panel ───────────────────────────────────────────────────────────
+  // ── Transaction edit panel ────────────────────────────────────────────────
   const [panelTx, setPanelTx]             = useState<Transaction | null>(null)
   const [editCategoryId, setEditCategoryId] = useState<string>('')
   const [editNotes, setEditNotes]         = useState<string>('')
   const [editSplit, setEditSplit]         = useState<number | null>(null)
   const [editIsTransfer, setEditIsTransfer] = useState<boolean>(false)
   const [saving, setSaving]               = useState(false)
+
+  // ── Category editing ──────────────────────────────────────────────────────
+  const [editingCatId, setEditingCatId]   = useState<number | null>(null)
+  const [editCatName, setEditCatName]     = useState<string>('')
+  const [editCatColour, setEditCatColour] = useState<string>('')
+  const [editCatIsFixed, setEditCatIsFixed] = useState<number>(0)
+  const [catSaving, setCatSaving]         = useState(false)
 
   // ── Bulk selection ───────────────────────────────────────────────────────
   const [selected, setSelected]           = useState<Set<number>>(new Set())
@@ -159,7 +166,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
 
   useEffect(() => { fetchTransactions() }, [fetchTransactions])
 
-  // ── Panel helpers ─────────────────────────────────────────────────────────
+  // ── Transaction panel helpers ──────────────────────────────────────────────
   const openPanel = (t: Transaction) => {
     setPanelTx(t)
     setEditCategoryId(t.category_id ? String(t.category_id) : '')
@@ -170,6 +177,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
       Math.round(txShare * 100) !== Math.round(acctShare * 100) ? txShare : null
     )
     setEditIsTransfer(t.is_transfer === 1)
+    setEditingCatId(null)
   }
 
   const closePanel = () => setPanelTx(null)
@@ -185,6 +193,30 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
     })
     setSaving(false)
     closePanel()
+    fetchTransactions()
+  }
+
+  // ── Category edit helpers ──────────────────────────────────────────────────
+  const startEditCategory = (cat: Category) => {
+    setEditingCatId(cat.id)
+    setEditCatName(cat.name)
+    setEditCatColour(cat.colour)
+    setEditCatIsFixed(cat.is_fixed)
+    setPanelTx(null)
+  }
+
+  const saveCategoryEdit = async () => {
+    if (editingCatId == null) return
+    setCatSaving(true)
+    await window.electronAPI.updateCategory(editingCatId, {
+      name: editCatName,
+      colour: editCatColour,
+      is_fixed: Boolean(editCatIsFixed),
+    })
+    const cats = await window.electronAPI.getCategories()
+    setCategories(cats)
+    setCatSaving(false)
+    setEditingCatId(null)
     fetchTransactions()
   }
 
@@ -259,23 +291,28 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
 
   const catMap = new Map(categories.map((c) => [c.id, c]))
 
-  // Quick-filter chips — top 8 variable categories with counts
+  // Per-category transaction counts for the current filtered view
   const catCounts = new Map<number, number>()
   transactions.forEach((t) => {
     if (t.category_id) catCounts.set(t.category_id, (catCounts.get(t.category_id) ?? 0) + 1)
   })
+
+  // Quick-filter chips — top 8 variable categories with counts
   const chipCategories = [...catCounts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([id, count]) => ({ cat: catMap.get(id), id, count }))
     .filter((x) => x.cat)
 
+  const fixedCategories   = categories.filter((c) => c.is_fixed === 1)
+  const variableCategories = categories.filter((c) => c.is_fixed === 0)
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen overflow-hidden">
 
-      {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-200 ${panelTx ? 'mr-[22rem]' : ''}`}>
+      {/* ── Main content — always offset by the right panel ──────────────── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden mr-[22rem]">
         <div className="flex-1 overflow-y-auto p-8">
 
           {/* Header */}
@@ -387,37 +424,27 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                 <button
                   key={id}
                   onClick={() => setCategoryFilter(categoryFilter === String(id) ? '' : String(id))}
-                  onDragOver={(e) => { if (dragTxId != null) { e.preventDefault(); setDragOverCatId(id) } }}
-                  onDragLeave={() => setDragOverCatId(null)}
-                  onDrop={(e) => { e.preventDefault(); handleDropOnCategory(id) }}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                    dragOverCatId === id
-                      ? 'scale-110 shadow-md text-white border-transparent'
-                      : categoryFilter === String(id)
+                    categoryFilter === String(id)
                       ? 'text-white border-transparent'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
                   }`}
                   style={
-                    dragOverCatId === id || categoryFilter === String(id)
+                    categoryFilter === String(id)
                       ? { background: cat!.colour, borderColor: cat!.colour }
                       : {}
                   }
                 >
                   <span
                     className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: dragOverCatId === id || categoryFilter === String(id) ? 'white' : cat!.colour }}
+                    style={{ background: categoryFilter === String(id) ? 'white' : cat!.colour }}
                   />
                   {cat!.name}
-                  <span className={`${dragOverCatId === id || categoryFilter === String(id) ? 'opacity-70' : 'text-gray-400'}`}>
+                  <span className={`${categoryFilter === String(id) ? 'opacity-70' : 'text-gray-400'}`}>
                     {count}
                   </span>
                 </button>
               ))}
-              {dragTxId != null && (
-                <span className="inline-flex items-center px-2.5 py-1 text-xs text-indigo-500 font-medium animate-pulse">
-                  Drop on a category to assign ↑
-                </span>
-              )}
             </div>
           )}
 
@@ -628,131 +655,343 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
         </div>
       </div>
 
-      {/* ── Side panel ───────────────────────────────────────────────────── */}
-      {panelTx && (
-        <div className="fixed right-0 top-0 h-full w-[22rem] bg-white border-l border-gray-200 shadow-2xl z-30 flex flex-col">
+      {/* ── Right panel — always visible ──────────────────────────────────── */}
+      <div className="fixed right-0 top-0 h-full w-[22rem] bg-white border-l border-gray-200 shadow-lg z-30 flex flex-col">
 
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="text-sm font-semibold text-gray-900">Edit transaction</h2>
-            <button
-              onClick={closePanel}
-              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X size={15} />
-            </button>
-          </div>
-
-          {/* Panel body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-
-            {/* Summary card */}
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
-              <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 truncate">
-                {panelTx.description}
-              </p>
-              <p className="text-xs text-gray-500">
-                {format(new Date(panelTx.date), 'd MMMM yyyy')} · {panelTx.account_name}
-              </p>
-              <p className="text-2xl font-bold mt-2.5">
-                {(panelTx.adjusted_amount ?? panelTx.amount) < 0 ? (
-                  <span className="text-emerald-600">
-                    +£{Math.abs(panelTx.adjusted_amount ?? panelTx.amount).toFixed(2)}
-                  </span>
-                ) : (
-                  <span className="text-gray-900">
-                    £{(panelTx.adjusted_amount ?? panelTx.amount).toFixed(2)}
-                  </span>
-                )}
-              </p>
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                Category
-              </label>
-              <select
-                value={editCategoryId}
-                onChange={(e) => setEditCategoryId(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+        {panelTx ? (
+          /* ── Transaction edit view ───────────────────────────────────── */
+          <>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+              <h2 className="text-sm font-semibold text-gray-900">Edit transaction</h2>
+              <button
+                onClick={closePanel}
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <option value="">Uncategorised</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              {/* Preview chip */}
-              {editCategoryId && (() => {
-                const cat = catMap.get(Number(editCategoryId))
-                return cat ? (
-                  <div className="mt-2">
-                    <span
-                      className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold text-white"
-                      style={{ background: cat.colour }}
-                    >
-                      {cat.name}
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+
+              {/* Summary card */}
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
+                <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 truncate">
+                  {panelTx.description}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {format(new Date(panelTx.date), 'd MMMM yyyy')} · {panelTx.account_name}
+                </p>
+                <p className="text-2xl font-bold mt-2.5">
+                  {(panelTx.adjusted_amount ?? panelTx.amount) < 0 ? (
+                    <span className="text-emerald-600">
+                      +£{Math.abs(panelTx.adjusted_amount ?? panelTx.amount).toFixed(2)}
                     </span>
-                  </div>
-                ) : null
-              })()}
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                Notes
-              </label>
-              <textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Add a note…"
-                rows={3}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            </div>
-
-            {/* Split */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                Your share
-              </label>
-              <SplitToggle
-                acctShare={panelTx.account_ownership_share ?? 1}
-                value={editSplit}
-                onChange={setEditSplit}
-              />
-            </div>
-
-            {/* Transfer toggle */}
-            <div className="flex items-center justify-between py-1">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Mark as transfer</p>
-                <p className="text-xs text-gray-400 mt-0.5">Excludes from budget calculations</p>
+                  ) : (
+                    <span className="text-gray-900">
+                      £{(panelTx.adjusted_amount ?? panelTx.amount).toFixed(2)}
+                    </span>
+                  )}
+                </p>
               </div>
-              <Toggle checked={editIsTransfer} onChange={() => setEditIsTransfer((v) => !v)} />
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                  Category
+                </label>
+                <select
+                  value={editCategoryId}
+                  onChange={(e) => setEditCategoryId(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                >
+                  <option value="">Uncategorised</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {editCategoryId && (() => {
+                  const cat = catMap.get(Number(editCategoryId))
+                  return cat ? (
+                    <div className="mt-2">
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold text-white"
+                        style={{ background: cat.colour }}
+                      >
+                        {cat.name}
+                      </span>
+                    </div>
+                  ) : null
+                })()}
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                  Notes
+                </label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add a note…"
+                  rows={3}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+
+              {/* Split */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                  Your share
+                </label>
+                <SplitToggle
+                  acctShare={panelTx.account_ownership_share ?? 1}
+                  value={editSplit}
+                  onChange={setEditSplit}
+                />
+              </div>
+
+              {/* Transfer toggle */}
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Mark as transfer</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Excludes from budget calculations</p>
+                </div>
+                <Toggle checked={editIsTransfer} onChange={() => setEditIsTransfer((v) => !v)} />
+              </div>
+
             </div>
 
-          </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 flex-shrink-0">
+              <button
+                onClick={savePanel}
+                disabled={saving}
+                className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-semibold transition-colors"
+              >
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+              <button
+                onClick={closePanel}
+                className="px-4 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          /* ── Categories view ─────────────────────────────────────────── */
+          <>
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+              <h2 className="text-sm font-semibold text-gray-900">Categories</h2>
+              {dragTxId != null && (
+                <p className="text-xs text-indigo-500 font-medium animate-pulse mt-1">
+                  Drop on a category below to assign ↓
+                </p>
+              )}
+            </div>
 
-          {/* Panel footer */}
-          <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
-            <button
-              onClick={savePanel}
-              disabled={saving}
-              className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-semibold transition-colors"
-            >
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
-            <button
-              onClick={closePanel}
-              className="px-4 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+            <div className="flex-1 overflow-y-auto px-3 py-4">
+
+              {/* Fixed Costs */}
+              {fixedCategories.length > 0 && (
+                <div className="mb-5">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1.5">
+                    Fixed Costs
+                  </p>
+                  <div className="space-y-0.5">
+                    {fixedCategories.map((cat) => {
+                      const isEditing   = editingCatId === cat.id
+                      const isDragOver  = dragOverCatId === cat.id
+                      const count       = catCounts.get(cat.id) ?? 0
+
+                      return (
+                        <div
+                          key={cat.id}
+                          onDragOver={(e) => { if (dragTxId != null) { e.preventDefault(); setDragOverCatId(cat.id) } }}
+                          onDragLeave={() => setDragOverCatId(null)}
+                          onDrop={(e) => { e.preventDefault(); handleDropOnCategory(cat.id) }}
+                          className={`group rounded-lg transition-all ${
+                            isDragOver
+                              ? 'shadow-md scale-[1.02]'
+                              : 'hover:bg-gray-50'
+                          }`}
+                          style={isDragOver ? { background: cat.colour + '18', outline: `2px solid ${cat.colour}` } : {}}
+                        >
+                          {isEditing ? (
+                            <div className="px-3 py-2.5 space-y-2">
+                              <input
+                                type="text"
+                                value={editCatName}
+                                onChange={(e) => setEditCatName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveCategoryEdit(); if (e.key === 'Escape') setEditingCatId(null) }}
+                                autoFocus
+                                className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                              />
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="color"
+                                  value={editCatColour}
+                                  onChange={(e) => setEditCatColour(e.target.value)}
+                                  className="w-8 h-8 rounded-md cursor-pointer border border-gray-300 p-0.5"
+                                  title="Pick colour"
+                                />
+                                <select
+                                  value={editCatIsFixed}
+                                  onChange={(e) => setEditCatIsFixed(Number(e.target.value))}
+                                  className="flex-1 text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                                >
+                                  <option value={1}>Fixed cost</option>
+                                  <option value={0}>Variable cost</option>
+                                </select>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={saveCategoryEdit}
+                                  disabled={catSaving || !editCatName.trim()}
+                                  className="flex-1 text-xs bg-indigo-600 text-white py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors"
+                                >
+                                  {catSaving ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingCatId(null)}
+                                  className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2.5 px-3 py-2">
+                              <span
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ background: cat.colour }}
+                              />
+                              <span className="flex-1 text-sm text-gray-700 font-medium truncate">
+                                {cat.name}
+                              </span>
+                              {count > 0 && (
+                                <span className="text-xs text-gray-400 tabular-nums">{count}</span>
+                              )}
+                              <button
+                                onClick={() => startEditCategory(cat)}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-indigo-600 rounded transition-all flex-shrink-0"
+                                title="Edit category"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Variable Costs */}
+              {variableCategories.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1.5">
+                    Variable Costs
+                  </p>
+                  <div className="space-y-0.5">
+                    {variableCategories.map((cat) => {
+                      const isEditing   = editingCatId === cat.id
+                      const isDragOver  = dragOverCatId === cat.id
+                      const count       = catCounts.get(cat.id) ?? 0
+
+                      return (
+                        <div
+                          key={cat.id}
+                          onDragOver={(e) => { if (dragTxId != null) { e.preventDefault(); setDragOverCatId(cat.id) } }}
+                          onDragLeave={() => setDragOverCatId(null)}
+                          onDrop={(e) => { e.preventDefault(); handleDropOnCategory(cat.id) }}
+                          className={`group rounded-lg transition-all ${
+                            isDragOver
+                              ? 'shadow-md scale-[1.02]'
+                              : 'hover:bg-gray-50'
+                          }`}
+                          style={isDragOver ? { background: cat.colour + '18', outline: `2px solid ${cat.colour}` } : {}}
+                        >
+                          {isEditing ? (
+                            <div className="px-3 py-2.5 space-y-2">
+                              <input
+                                type="text"
+                                value={editCatName}
+                                onChange={(e) => setEditCatName(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveCategoryEdit(); if (e.key === 'Escape') setEditingCatId(null) }}
+                                autoFocus
+                                className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                              />
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="color"
+                                  value={editCatColour}
+                                  onChange={(e) => setEditCatColour(e.target.value)}
+                                  className="w-8 h-8 rounded-md cursor-pointer border border-gray-300 p-0.5"
+                                  title="Pick colour"
+                                />
+                                <select
+                                  value={editCatIsFixed}
+                                  onChange={(e) => setEditCatIsFixed(Number(e.target.value))}
+                                  className="flex-1 text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                                >
+                                  <option value={1}>Fixed cost</option>
+                                  <option value={0}>Variable cost</option>
+                                </select>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={saveCategoryEdit}
+                                  disabled={catSaving || !editCatName.trim()}
+                                  className="flex-1 text-xs bg-indigo-600 text-white py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors"
+                                >
+                                  {catSaving ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingCatId(null)}
+                                  className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2.5 px-3 py-2">
+                              <span
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ background: cat.colour }}
+                              />
+                              <span className="flex-1 text-sm text-gray-700 font-medium truncate">
+                                {cat.name}
+                              </span>
+                              {count > 0 && (
+                                <span className="text-xs text-gray-400 tabular-nums">{count}</span>
+                              )}
+                              <button
+                                onClick={() => startEditCategory(cat)}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-indigo-600 rounded transition-all flex-shrink-0"
+                                title="Edit category"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {categories.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-8">
+                  No categories yet. Add them in the Budget page.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
