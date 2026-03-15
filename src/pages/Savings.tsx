@@ -120,7 +120,7 @@ export function SavingsPage() {
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={(v) => `£${v}`} tick={{ fontSize: 11 }} />
                 <Tooltip
-                  formatter={(v: number) => [fmt(v), 'Saved']}
+                  formatter={(v) => [fmt(Number(v)), 'Saved']}
                   labelFormatter={(l) => `Month: ${l}`}
                   contentStyle={{ fontSize: 12 }}
                 />
