@@ -17,9 +17,9 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-gray-50" style={{ display: 'grid', gridTemplateColumns: '14rem 1fr' }}>
+    <div className="h-screen overflow-hidden bg-gray-50 relative">
       <Sidebar current={page} onChange={(p) => setPage(p)} />
-      <main className="overflow-auto min-w-0">
+      <main className="absolute top-0 left-56 right-0 bottom-0 overflow-auto">
         {page === 'dashboard' && (
           <DashboardPage onNavigateToTransactions={navigateToTransactions} />
         )}
