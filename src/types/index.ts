@@ -173,7 +173,8 @@ declare global {
       importTransactions(data: { accountId: number; filename: string; transactions: ParsedTransaction[] }): Promise<ImportResult>
       getImportHistory(): Promise<ImportRecord[]>
       getTransactions(filters?: TransactionFilters): Promise<Transaction[]>
-      updateTransaction(id: number, updates: { category_id?: number; notes?: string; ownership_share?: number | null }): Promise<void>
+      updateTransaction(id: number, updates: { category_id?: number; notes?: string; ownership_share?: number | null; is_transfer?: number }): Promise<void>
+      updateRule(id: number, data: { keyword: string; category_id: number; priority: number }): Promise<CategorisationRule>
       getCategories(): Promise<Category[]>
       addCategory(data: { name: string; colour: string; is_fixed: boolean }): Promise<Category>
       updateCategory(id: number, data: { name: string; colour: string; is_fixed: boolean }): Promise<Category>

@@ -18,7 +18,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar current={page} onChange={(p) => setPage(p)} />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto min-w-0">
         {page === 'dashboard' && (
           <DashboardPage onNavigateToTransactions={navigateToTransactions} />
         )}

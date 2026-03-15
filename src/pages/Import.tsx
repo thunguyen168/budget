@@ -86,7 +86,7 @@ export function ImportPage() {
     `£${Math.abs(t.amount).toFixed(2)} ${t.amount > 0 ? 'out' : 'in'}`
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 w-full">
       <h1 className="text-2xl font-semibold text-gray-900 mb-1">Import Statements</h1>
       <p className="text-gray-500 text-sm mb-8">Upload CSV files from Monzo, American Express, or Nationwide.</p>
 

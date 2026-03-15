@@ -123,6 +123,10 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
   const [bulkCategoryId, setBulkCategoryId] = useState<string>('')
   const [bulkApplying, setBulkApplying]   = useState(false)
 
+  // ── Drag-and-drop ─────────────────────────────────────────────────────
+  const [dragTxId, setDragTxId]           = useState<number | null>(null)
+  const [dragOverCatId, setDragOverCatId] = useState<number | null>(null)
+
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
@@ -177,6 +181,7 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
       category_id:     editCategoryId ? Number(editCategoryId) : undefined,
       notes:           editNotes,
       ownership_share: editSplit,
+      is_transfer:     editIsTransfer ? 1 : 0,
     })
     setSaving(false)
     closePanel()
@@ -207,6 +212,20 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
 
   const toggleAll = () =>
     setSelected(selected.size === sorted.length ? new Set() : new Set(sorted.map((t) => t.id)))
+
+  // ── Drag helpers ──────────────────────────────────────────────────────────
+  const handleDragStart = (e: React.DragEvent, txId: number) => {
+    setDragTxId(txId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDropOnCategory = async (catId: number) => {
+    if (dragTxId == null) return
+    setDragOverCatId(null)
+    setDragTxId(null)
+    await window.electronAPI.updateTransaction(dragTxId, { category_id: catId })
+    fetchTransactions()
+  }
 
   // ── Sort helpers ──────────────────────────────────────────────────────────
   const toggleSort = (field: typeof sortBy) => {
@@ -368,23 +387,37 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                 <button
                   key={id}
                   onClick={() => setCategoryFilter(categoryFilter === String(id) ? '' : String(id))}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                    categoryFilter === String(id)
+                  onDragOver={(e) => { if (dragTxId != null) { e.preventDefault(); setDragOverCatId(id) } }}
+                  onDragLeave={() => setDragOverCatId(null)}
+                  onDrop={(e) => { e.preventDefault(); handleDropOnCategory(id) }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    dragOverCatId === id
+                      ? 'scale-110 shadow-md text-white border-transparent'
+                      : categoryFilter === String(id)
                       ? 'text-white border-transparent'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
                   }`}
-                  style={categoryFilter === String(id) ? { background: cat!.colour, borderColor: cat!.colour } : {}}
+                  style={
+                    dragOverCatId === id || categoryFilter === String(id)
+                      ? { background: cat!.colour, borderColor: cat!.colour }
+                      : {}
+                  }
                 >
                   <span
                     className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: cat!.colour }}
+                    style={{ background: dragOverCatId === id || categoryFilter === String(id) ? 'white' : cat!.colour }}
                   />
                   {cat!.name}
-                  <span className={`${categoryFilter === String(id) ? 'opacity-70' : 'text-gray-400'}`}>
+                  <span className={`${dragOverCatId === id || categoryFilter === String(id) ? 'opacity-70' : 'text-gray-400'}`}>
                     {count}
                   </span>
                 </button>
               ))}
+              {dragTxId != null && (
+                <span className="inline-flex items-center px-2.5 py-1 text-xs text-indigo-500 font-medium animate-pulse">
+                  Drop on a category to assign ↑
+                </span>
+              )}
             </div>
           )}
 
@@ -491,8 +524,13 @@ export function TransactionsPage({ initialCategoryId }: { initialCategoryId?: nu
                       return (
                         <tr
                           key={t.id}
-                          className={`border-t border-gray-100 transition-colors ${
-                            isActive
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, t.id)}
+                          onDragEnd={() => { setDragTxId(null); setDragOverCatId(null) }}
+                          className={`border-t border-gray-100 transition-colors cursor-grab active:cursor-grabbing ${
+                            dragTxId === t.id
+                              ? 'opacity-50 bg-indigo-50'
+                              : isActive
                               ? 'bg-indigo-50'
                               : isChecked
                               ? 'bg-blue-50/60'
